@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
 
+
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import StatCard from './components/StatCard';
@@ -23,6 +24,7 @@ function App() {
   const [sessionId, setSessionId] = useState(null);
   const [prediction, setPrediction] = useState(null);
   const [explored, setExplored] = useState(false);
+  const [featureImportance, setFeatureImportance] = useState(null);
 
   const handleFileSelect = async (selectedFile) => {
     setFile(selectedFile);
@@ -54,6 +56,28 @@ function App() {
     }
   };
 
+  const handleSelectModel = async (item) => {
+  setSelectedModel(item);
+  setPrediction(null);
+  setFeatureImportance(null);
+  try {
+    const fi = await getFeatureImportance(sessionId, item.model);
+    if (fi.supported) {
+      setFeatureImportance(fi.importances);
+    }
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+const handleDownload = async () => {
+  if (!selectedModel) return;
+  try {
+    await downloadModel(sessionId, selectedModel.model);
+  } catch (err) {
+    setError(err.message);
+  }
+};
   const handlePredict = async (sample) => {
     setLoading(true);
     setError(null);
@@ -78,17 +102,12 @@ function App() {
   const modelsList = getModelsList();
 
   // Helper to format feature importances for Recharts
-  const getFeatureImportanceData = () => {
-    if (!analysis?.feature_importance) return [];
-    if (Array.isArray(analysis.feature_importance)) {
-      return analysis.feature_importance.slice(0, 8);
-    }
-    return Object.entries(analysis.feature_importance)
-      .map(([feature, importance]) => ({ feature, importance }))
-      .sort((a, b) => b.importance - a.importance)
-      .slice(0, 8);
-  };
-
+ const getFeatureImportanceData = () => {
+  if (!featureImportance) return [];
+  return [...featureImportance]
+    .sort((a, b) => b.importance - a.importance)
+    .slice(0, 8);
+};
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar />
@@ -263,7 +282,7 @@ function App() {
                               )}
                               <td className="py-3 px-3 text-right">
                                 <button
-                                  onClick={() => setSelectedModel(item)}
+                                  onClick={() => handleSelectModel(item)}
                                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                                     isSelected 
                                       ? 'bg-blue-600 text-white shadow-sm' 
@@ -312,7 +331,7 @@ function App() {
               )}
 
               {/* Feature Importance Chart */}
-              {analysis.feature_importance && (
+              {featureImportance && featureImportance.length > 0 && (
                 <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-100">
                   <h3 className="text-lg font-semibold text-gray-800 mb-1">Top Feature Importances</h3>
                   <p className="text-xs text-gray-500 mb-4">Features driving model decisions</p>
@@ -345,13 +364,13 @@ function App() {
                     </p>
                   </div>
 
-                  <button 
-                    onClick={() => alert(`Downloading trained model file (${selectedModel.model}.pkl)...`)}
-                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl shadow-sm text-sm transition-all flex items-center gap-2"
-                  >
-                    <Download size={18} />
-                    Download Model (.pkl)
-                  </button>
+              <button 
+  onClick={handleDownload}
+  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl shadow-sm text-sm transition-all flex items-center gap-2"
+>
+  <Download size={18} />
+  Download Model (.joblib)
+</button>
                 </div>
               )}
 

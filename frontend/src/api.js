@@ -103,3 +103,20 @@ export async function getPivotData(sessionId, catCol, numCol, aggFunc) {
 export function getReportUrl(sessionId) {
   return `${API_BASE}/api/sessions/${sessionId}/report`;
 }
+
+export async function downloadModel(sessionId, modelName) {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/download-model/${encodeURIComponent(modelName)}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`downloadModel failed (${res.status}): ${text}`);
+  }
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${modelName.replace(/[^a-zA-Z0-9]/g, "_")}.joblib`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
