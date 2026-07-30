@@ -42,19 +42,19 @@ function App() {
     }
   };
 
-  const handleTargetSelect = async (targetCol) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await trainModel(sessionId, targetCol);
-      setAnalysis(result);
-    } catch (err) {
-      console.error(err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleTargetSelect = async (targetCol, task = null) => {
+  setLoading(true);
+  setError(null);
+  try {
+    const result = await trainModel(sessionId, targetCol, task);
+    setAnalysis(result);
+  } catch (err) {
+    console.error(err);
+    setError(err.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleSelectModel = async (item) => {
   setSelectedModel(item);
@@ -153,9 +153,10 @@ const handleDownload = async () => {
                 <ArrowLeft size={14} /> Back to Data Exploration
               </button>
               <ModelSelectionScreen 
-                columns={columns} 
-                onSelectTarget={handleTargetSelect} 
-              />
+  columns={columns} 
+  onSelectTarget={handleTargetSelect} 
+  onSelectTask={(task) => handleTargetSelect(null, task)}
+/>
             </div>
           )}
 

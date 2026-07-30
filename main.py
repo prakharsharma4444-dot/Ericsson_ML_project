@@ -79,7 +79,10 @@ class PivotRequest(BaseModel):
     cat_col: str
     num_col: str
     agg_func: str  # 'mean', 'sum', 'count', 'min', 'max'
-
+class TrainRequest(BaseModel):
+    target_col: str
+    priority: Optional[str] = None
+    task: Optional[str] = None  # "priority" | "resolution" | "owner" — for Ericsson ticket data
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -336,12 +339,19 @@ def compare(session_id: str, col1: str, col2: str):
     result = compare_two_columns(session.df_raw, col1, col2)
     return to_jsonable(result)
 
+from ericsson_prep import prepare_ticket_data
 
 @app.post("/api/sessions/{session_id}/train")
 def train(session_id: str, req: TrainRequest):
     session = get_session_or_404(session_id)
     df = session.df_raw.copy()
-    target_col = req.target_col
+
+    if req.task:
+        df, target_col = prepare_ticket_data(df, task=req.task)
+    else:
+        target_col = req.target_col
+    # ...rest of the function stays exactly the same, just replace
+    # every subsequent `req.target_col` with `target_col`
 
     errors, warnings = validate_inputs(df, target_col)
     if errors:

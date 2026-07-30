@@ -15,11 +15,12 @@ export async function getColumns(file) {
   };
 }
 
-export async function trainModel(sessionId, targetCol) {
+export async function trainModel(sessionId, targetCol, task = null) {
+  const body = task ? { target_col: targetCol || "", task } : { target_col: targetCol };
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/train`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target_col: targetCol })
+    body: JSON.stringify(body)
   });
 
   if (!res.ok) {
