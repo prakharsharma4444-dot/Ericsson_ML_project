@@ -23,6 +23,8 @@ from pydantic import BaseModel
 
 from jsonsafe import to_jsonable
 from session_store import Session, create_session, get_session
+from ericsson_prep import prepare_ticket_data
+from dashboard_stats import build_dashboard_summary
 from pipeline import (
     validate_inputs,
     get_column_info,
@@ -68,6 +70,7 @@ class ValidateRequest(BaseModel):
 class TrainRequest(BaseModel):
     target_col: str
     priority: Optional[str] = None
+    task: Optional[str] = None  # "priority" | "resolution" | "owner" — for Ericsson ticket data
 
 
 class PredictRequest(BaseModel):
@@ -79,10 +82,6 @@ class PivotRequest(BaseModel):
     cat_col: str
     num_col: str
     agg_func: str  # 'mean', 'sum', 'count', 'min', 'max'
-class TrainRequest(BaseModel):
-    target_col: str
-    priority: Optional[str] = None
-    task: Optional[str] = None  # "priority" | "resolution" | "owner" — for Ericsson ticket data
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -339,8 +338,6 @@ def compare(session_id: str, col1: str, col2: str):
     result = compare_two_columns(session.df_raw, col1, col2)
     return to_jsonable(result)
 
-from ericsson_prep import prepare_ticket_data
-
 @app.post("/api/sessions/{session_id}/train")
 def train(session_id: str, req: TrainRequest):
     session = get_session_or_404(session_id)
@@ -470,6 +467,16 @@ def feature_importance(session_id: str, model_name: str):
         "supported": True,
         "importances": [{"feature": f, "importance": to_jsonable(v)} for f, v in importances],
     }
+
+
+@app.get("/api/sessions/{session_id}/dashboard-summary")
+def dashboard_summary(session_id: str):
+    session = get_session_or_404(session_id)
+    try:
+        result = build_dashboard_summary(session.df_raw)
+    except Exception as e:
+        raise HTTPException(400, f"Could not compute dashboard summary: {e}")
+    return to_jsonable(result)
 
 
 @app.post("/api/sessions/{session_id}/predict")

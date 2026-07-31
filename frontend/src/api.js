@@ -64,6 +64,16 @@ export async function getFeatureImportance(sessionId, modelName) {
   if (!res.ok) throw new Error(`getFeatureImportance failed (${res.status})`);
   return res.json();
 }
+
+export async function getDashboardSummary(sessionId) {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/dashboard-summary`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`getDashboardSummary failed (${res.status}): ${text}`);
+  }
+  return res.json();
+}
+
 export async function getPreview(sessionId) {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/preview`);
   if (!res.ok) throw new Error(`getPreview failed (${res.status})`);

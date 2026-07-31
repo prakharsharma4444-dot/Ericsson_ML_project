@@ -1,14 +1,13 @@
 import { FolderOpen, AlertTriangle, Clock, CheckCircle2 } from 'lucide-react';
-import Sidebar from './components/Sidebar';
-import TopBar from './components/TopBar';
-import StatCard from './components/StatCard';
-import PriorityChart from './components/PriorityChart';
-import StatusBreakdown from './components/StatusBreakdown';
-import RecentActivity from './components/RecentActivity';
-import NeedsAttention from './components/NeedsAttention';
-import WeeklyVolume from './components/WeeklyVolume';
+import StatCard from './StatCard';
+import PriorityChart from './PriorityChart';
+import StatusBreakdown from './StatusBreakdown';
+import RecentActivity from './RecentActivity';
+import NeedsAttention from './NeedsAttention';
+import WeeklyVolume from './WeeklyVolume';
 
 // Default mock data so the dashboard doesn't crash if props are empty
+// (e.g. before any file has been uploaded)
 const defaultSummary = { totalOpen: 42, totalOverdue: 5, avgResolutionDays: 3.2, slaCompliancePct: 94 };
 
 const defaultPriority = [
@@ -43,6 +42,9 @@ const defaultVolume = [
   { month: 'Jul', opened: 130, closed: 115 },
 ];
 
+// NOTE: Sidebar/TopBar deliberately NOT rendered here — App.jsx already
+// renders those once as the persistent outer shell. Rendering them again
+// here would show two sidebars stacked on top of each other.
 function Dashboard({
   summary = defaultSummary,
   priorityData = defaultPriority,
@@ -52,33 +54,27 @@ function Dashboard({
   volumeData = defaultVolume
 }) {
   return (
-    <div className="flex bg-gray-50 min-h-screen">
-      <Sidebar active="Dashboard" />
-      <div className="flex-1 flex flex-col">
-        <TopBar />
-        <main className="p-6 space-y-6">
-          <h2 className="text-2xl font-bold text-gray-800">Overview</h2>
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-gray-800">Overview</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <StatCard label="Total Open Cases" value={summary.totalOpen} icon={FolderOpen} iconBg="bg-indigo-50" iconColor="text-indigo-600" />
-            <StatCard label="Overdue Cases" value={summary.totalOverdue} icon={AlertTriangle} iconBg="bg-red-50" iconColor="text-red-500" />
-            <StatCard label="Avg. Resolution" value={`${summary.avgResolutionDays}d`} icon={Clock} iconBg="bg-amber-50" iconColor="text-amber-500" />
-            <StatCard label="SLA Compliance" value={`${summary.slaCompliancePct}%`} icon={CheckCircle2} iconBg="bg-green-50" iconColor="text-green-500" />
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatCard label="Total Open Cases" value={summary.totalOpen} icon={FolderOpen} iconBg="bg-indigo-50" iconColor="text-indigo-600" />
+        <StatCard label="Overdue Cases" value={summary.totalOverdue} icon={AlertTriangle} iconBg="bg-red-50" iconColor="text-red-500" />
+        <StatCard label="Avg. Resolution" value={`${summary.avgResolutionDays}d`} icon={Clock} iconBg="bg-amber-50" iconColor="text-amber-500" />
+        <StatCard label="SLA Compliance" value={`${summary.slaCompliancePct}%`} icon={CheckCircle2} iconBg="bg-green-50" iconColor="text-green-500" />
+      </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <PriorityChart data={priorityData} />
-            </div>
-            <StatusBreakdown data={statusData} />
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          <PriorityChart data={priorityData} />
+        </div>
+        <StatusBreakdown data={statusData} />
+      </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <RecentActivity cases={recentCases} />
-            <NeedsAttention cases={attentionCases} />
-            <WeeklyVolume data={volumeData} />
-          </div>
-        </main>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <RecentActivity cases={recentCases} />
+        <NeedsAttention cases={attentionCases} />
+        <WeeklyVolume data={volumeData} />
       </div>
     </div>
   );

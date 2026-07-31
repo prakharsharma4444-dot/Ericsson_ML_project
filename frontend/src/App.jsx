@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Rows3, Columns3, Hash, CheckCircle2, Download, ArrowLeft } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
@@ -10,7 +10,8 @@ import TopBar from './components/TopBar';
 import StatCard from './components/StatCard';
 import UploadCard from './components/UploadCard';
 import ModelSelectionScreen from './components/ModelSelectionScreen';
-import { getColumns, trainModel, predictSample } from './api';
+import Dashboard from './components/Dashboard';
+import { getColumns, trainModel, predictSample, downloadModel, getFeatureImportance, getDashboardSummary } from './api';
 import PredictionForm from './components/PredictionForm';
 import DataExploreScreen from './components/DataExploreScreen';
 
@@ -25,6 +26,21 @@ function App() {
   const [prediction, setPrediction] = useState(null);
   const [explored, setExplored] = useState(false);
   const [featureImportance, setFeatureImportance] = useState(null);
+  const [activeNav, setActiveNav] = useState('Dashboard');
+  const [dashboardData, setDashboardData] = useState(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardError, setDashboardError] = useState(null);
+
+  useEffect(() => {
+    if (activeNav === 'Dashboard' && sessionId) {
+      setDashboardLoading(true);
+      setDashboardError(null);
+      getDashboardSummary(sessionId)
+        .then(setDashboardData)
+        .catch((err) => setDashboardError(err.message))
+        .finally(() => setDashboardLoading(false));
+    }
+  }, [activeNav, sessionId]);
 
   const handleFileSelect = async (selectedFile) => {
     setFile(selectedFile);
@@ -110,7 +126,7 @@ const handleDownload = async () => {
 };
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+      <Sidebar active={activeNav} onNavigate={setActiveNav} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar />
         <main className="flex-1 overflow-y-auto p-6">
@@ -125,7 +141,37 @@ const handleDownload = async () => {
               Running pipeline...
             </div>
           )}
-          
+
+          {/* DASHBOARD PAGE */}
+          {activeNav === 'Dashboard' && (
+            <>
+              {!sessionId && (
+                <Dashboard />
+              )}
+              {sessionId && dashboardLoading && (
+                <div className="text-center py-16 text-gray-500">Loading dashboard...</div>
+              )}
+              {sessionId && dashboardError && (
+                <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                  {dashboardError}
+                </div>
+              )}
+              {sessionId && dashboardData && !dashboardLoading && (
+                <Dashboard
+                  summary={dashboardData.summary}
+                  priorityData={dashboardData.priorityData}
+                  statusData={dashboardData.statusData}
+                  recentCases={dashboardData.recentCases}
+                  attentionCases={dashboardData.attentionCases}
+                  volumeData={dashboardData.volumeData}
+                />
+              )}
+            </>
+          )}
+
+          {/* UPLOAD DATA / ML TRAINING FLOW */}
+          {activeNav === 'Upload Data' && (
+            <>
           {/* STEP 1: Upload File */}
           {!file && <UploadCard onFileSelect={handleFileSelect} />}
           
@@ -165,7 +211,12 @@ const handleDownload = async () => {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <button
-                  onClick={() => setAnalysis(null)}
+                  onClick={() => {
+                    setAnalysis(null);
+                    setSelectedModel(null);
+                    setPrediction(null);
+                    setFeatureImportance(null);
+                  }}
                   className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-800 transition"
                 >
                   <ArrowLeft size={14} /> Back to Target Selection
@@ -399,6 +450,8 @@ const handleDownload = async () => {
                 </>
               )}
             </div>
+          )}
+            </>
           )}
         </main>
       </div>
