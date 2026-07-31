@@ -396,6 +396,10 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
             </div>
           </div>
         )}
+
+        {comparison?.chart_type === 'crosstab' && (
+          <CrosstabTable data={comparison.data} col1={comparison.col1} col2={comparison.col2} />
+        )}
       </div>
 
       {/* Navigation Footer with Back and Continue Buttons */}
@@ -487,6 +491,65 @@ function StatBox({ label, value }) {
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-col justify-center">
       <p className="text-xs font-medium text-gray-500 mb-1">{label}</p>
       <p className="text-xl font-bold text-gray-800">{value ?? 'N/A'}</p>
+    </div>
+  );
+}
+
+// Renders a categorical-vs-categorical comparison as a count table.
+// Backend sends data shaped as { col2Value: { col1Value: count } }.
+// Caps rendering when combined cardinality is too large to be useful
+// (common when one picked column is ID-like, e.g. "case number").
+function CrosstabTable({ data, col1, col2 }) {
+  const col2Values = Object.keys(data || {});
+  const col1Values = col2Values.length > 0 ? Object.keys(data[col2Values[0]] || {}) : [];
+  const totalCells = col1Values.length * col2Values.length;
+
+  if (totalCells === 0) {
+    return <p className="text-xs text-gray-400">No data to compare for these columns.</p>;
+  }
+
+  if (totalCells > 200) {
+    return (
+      <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-4">
+        Too many unique category combinations to display as a table
+        ({col1Values.length} × {col2Values.length} = {totalCells} cells). This usually means
+        one of the selected columns (like an ID column) has too many unique values.
+        Try picking two columns with fewer distinct categories.
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <p className="text-xs text-gray-500 mb-3 font-medium">
+        Cross-tabulation: count of {col1} by {col2}
+      </p>
+      <table className="text-xs w-full border-collapse">
+        <thead>
+          <tr>
+            <th className="p-2 border-b border-gray-200 text-left font-semibold text-gray-600 bg-gray-50">
+              {col1} \ {col2}
+            </th>
+            {col2Values.map((v2) => (
+              <th key={v2} className="p-2 border-b border-gray-200 text-right font-semibold text-gray-600 bg-gray-50">
+                {v2}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {col1Values.map((v1) => (
+            <tr key={v1} className="hover:bg-gray-50">
+              <td className="p-2 border-b border-gray-100 font-medium text-gray-700 whitespace-nowrap">{v1}</td>
+              {col2Values.map((v2) => (
+                <td key={v2} className="p-2 border-b border-gray-100 text-right text-gray-600">
+                  {data[v2]?.[v1] ?? 0}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
