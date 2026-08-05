@@ -158,17 +158,31 @@ def get_column_info(df):
 # 2. Problem type detection + target transforms
 # ---------------------------------------------------------------------------
 
-def detect_problem_type(y):
+def detect_problem_type(y, task_name=None):
+    """Detects whether a dataset target requires classification or regression.
+
+    Args:
+        y (pd.Series): The target column.
+        task_name (str, optional): The name of the prediction task.
+
+    Returns:
+        str: "classification" or "regression"
     """
-    Looks at a target series and decides whether this is a classification
-    or regression problem. Text targets, or numeric targets with few
-    unique values relative to the dataset size, are treated as classification.
-    """
+    # Force resolution target to regression
+    if task_name == "resolution" or y.name == "resolution_hours":
+        return "regression"
+
     if y.dtype == "object":
         return "classification"
+
+    # If numeric continuous float column, default to regression
+    if pd.api.types.is_float_dtype(y):
+        return "regression"
+
     unique_ratio = y.nunique() / len(y)
     if y.nunique() <= 20 or unique_ratio < 0.05:
         return "classification"
+
     return "regression"
 
 

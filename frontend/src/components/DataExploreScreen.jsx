@@ -495,10 +495,13 @@ function StatBox({ label, value }) {
   );
 }
 
-// Renders a categorical-vs-categorical comparison as a count table.
-// Backend sends data shaped as { col2Value: { col1Value: count } }.
-// Caps rendering when combined cardinality is too large to be useful
-// (common when one picked column is ID-like, e.g. "case number").
+// Renders a categorical-vs-categorical comparison as a stacked bar chart
+// plus a count table. Backend sends data shaped as
+// { col2Value: { col1Value: count } }. Caps rendering when combined
+// cardinality is too large to be useful (common when one picked column
+// is ID-like, e.g. "case number").
+const CROSSTAB_COLORS = ['#3b82f6', '#22c3a6', '#f472b6', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#84cc16', '#ec4899', '#6366f1'];
+
 function CrosstabTable({ data, col1, col2 }) {
   const col2Values = Object.keys(data || {});
   const col1Values = col2Values.length > 0 ? Object.keys(data[col2Values[0]] || {}) : [];
@@ -511,7 +514,7 @@ function CrosstabTable({ data, col1, col2 }) {
   if (totalCells > 200) {
     return (
       <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-4">
-        Too many unique category combinations to display as a table
+        Too many unique category combinations to display
         ({col1Values.length} × {col2Values.length} = {totalCells} cells). This usually means
         one of the selected columns (like an ID column) has too many unique values.
         Try picking two columns with fewer distinct categories.
@@ -519,37 +522,63 @@ function CrosstabTable({ data, col1, col2 }) {
     );
   }
 
+  // Reshape into recharts-friendly rows: one row per col1 value, one
+  // stacked bar segment per col2 value.
+  const chartData = col1Values.map((v1) => {
+    const row = { name: v1 };
+    col2Values.forEach((v2) => {
+      row[v2] = data[v2]?.[v1] ?? 0;
+    });
+    return row;
+  });
+
   return (
-    <div className="overflow-x-auto">
+    <div>
       <p className="text-xs text-gray-500 mb-3 font-medium">
-        Cross-tabulation: count of {col1} by {col2}
+        {col1} by {col2}
       </p>
-      <table className="text-xs w-full border-collapse">
-        <thead>
-          <tr>
-            <th className="p-2 border-b border-gray-200 text-left font-semibold text-gray-600 bg-gray-50">
-              {col1} \ {col2}
-            </th>
-            {col2Values.map((v2) => (
-              <th key={v2} className="p-2 border-b border-gray-200 text-right font-semibold text-gray-600 bg-gray-50">
-                {v2}
-              </th>
+      <div className="h-72 w-full mb-6">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 40 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-25} textAnchor="end" />
+            <YAxis tick={{ fontSize: 11 }} />
+            <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+            {col2Values.map((v2, i) => (
+              <Bar key={v2} dataKey={v2} stackId="a" fill={CROSSTAB_COLORS[i % CROSSTAB_COLORS.length]} />
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {col1Values.map((v1) => (
-            <tr key={v1} className="hover:bg-gray-50">
-              <td className="p-2 border-b border-gray-100 font-medium text-gray-700 whitespace-nowrap">{v1}</td>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="text-xs w-full border-collapse">
+          <thead>
+            <tr>
+              <th className="p-2 border-b border-gray-200 text-left font-semibold text-gray-600 bg-gray-50">
+                {col1} \ {col2}
+              </th>
               {col2Values.map((v2) => (
-                <td key={v2} className="p-2 border-b border-gray-100 text-right text-gray-600">
-                  {data[v2]?.[v1] ?? 0}
-                </td>
+                <th key={v2} className="p-2 border-b border-gray-200 text-right font-semibold text-gray-600 bg-gray-50">
+                  {v2}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {col1Values.map((v1) => (
+              <tr key={v1} className="hover:bg-gray-50">
+                <td className="p-2 border-b border-gray-100 font-medium text-gray-700 whitespace-nowrap">{v1}</td>
+                {col2Values.map((v2) => (
+                  <td key={v2} className="p-2 border-b border-gray-100 text-right text-gray-600">
+                    {data[v2]?.[v1] ?? 0}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

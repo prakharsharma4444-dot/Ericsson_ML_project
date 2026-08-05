@@ -68,7 +68,7 @@ class ValidateRequest(BaseModel):
 
 
 class TrainRequest(BaseModel):
-    target_col: str
+    target_col: Optional[str] = None
     priority: Optional[str] = None
     task: Optional[str] = None  # "priority" | "resolution" | "owner" — for Ericsson ticket data
 
@@ -105,9 +105,9 @@ def build_feature_info(df: pd.DataFrame, cols):
         is_numeric = pd.api.types.is_numeric_dtype(df[col])
         entry = {"name": col, "is_numeric": is_numeric}
         if is_numeric:
-            entry["min"] = float(df[col].min())
-            entry["max"] = float(df[col].max())
-            entry["mean"] = float(df[col].mean())
+            entry["min"] = float(df[col].min()) if not pd.isna(df[col].min()) else None
+            entry["max"] = float(df[col].max()) if not pd.isna(df[col].max()) else None
+            entry["mean"] = float(df[col].mean()) if not pd.isna(df[col].mean()) else None
         else:
             options = df[col].dropna().unique().tolist()
             entry["options"] = [str(o) for o in options[:50]]
@@ -126,16 +126,18 @@ def generate_column_stats(df):
 
     for col in df.columns:
         missing_count = df[col].isnull().sum()
-        missing_pct = round((missing_count / len(df)) * 100, 1)
+        missing_pct = round((missing_count / len(df)) * 100, 1) if len(df) > 0 else 0.0
         n_unique = df[col].nunique()
         is_numeric = pd.api.types.is_numeric_dtype(df[col])
 
         # Column-level alerts
         if n_unique == 1:
-            alerts.append(f"Column '{col}' has zero variance (only 1 unique value: '{df[col].dropna().iloc[0]}').")
+            non_null_series = df[col].dropna()
+            first_val = str(non_null_series.iloc[0]) if not non_null_series.empty else "N/A"
+            alerts.append(f"Column '{col}' has zero variance (only 1 unique value: '{first_val}').")
         if missing_pct > 30:
             alerts.append(f"Column '{col}' has a high missing rate ({missing_pct}%).")
-        if n_unique == len(df) and not is_numeric:
+        if n_unique == len(df) and len(df) > 0 and not is_numeric:
             alerts.append(f"Column '{col}' appears to be a unique text ID/Index.")
 
         col_stat = {
@@ -209,7 +211,7 @@ def preview(session_id: str, rows: int = 10):
     column_stats, alerts = generate_column_stats(df)
     
     return {
-        "preview": to_jsonable(df.to_dict("records")),
+        "preview": to_jsonable(df.head(rows).to_dict("records")),
         "n_rows": len(df),
         "n_cols": len(df.columns),
         "missing_values": int(df.isnull().sum().sum()),
@@ -338,6 +340,7 @@ def compare(session_id: str, col1: str, col2: str):
     result = compare_two_columns(session.df_raw, col1, col2)
     return to_jsonable(result)
 
+
 @app.post("/api/sessions/{session_id}/train")
 def train(session_id: str, req: TrainRequest):
     session = get_session_or_404(session_id)
@@ -345,10 +348,10 @@ def train(session_id: str, req: TrainRequest):
 
     if req.task:
         df, target_col = prepare_ticket_data(df, task=req.task)
-    else:
+    elif req.target_col:
         target_col = req.target_col
-    # ...rest of the function stays exactly the same, just replace
-    # every subsequent `req.target_col` with `target_col`
+    else:
+        raise HTTPException(400, "Must provide either 'target_col' or 'task'.")
 
     errors, warnings = validate_inputs(df, target_col)
     if errors:
@@ -590,7 +593,7 @@ def generate_report(session_id: str):
     for col in df.columns:
         dtype = str(df[col].dtype)
         col_missing = int(df[col].isnull().sum())
-        col_missing_pct = round((col_missing / n_rows) * 100, 1)
+        col_missing_pct = round((col_missing / (n_rows or 1)) * 100, 1)
         unique_cnt = int(df[col].nunique())
 
         is_num = pd.api.types.is_numeric_dtype(df[col]) and not pd.api.types.is_bool_dtype(df[col])
@@ -632,7 +635,7 @@ def generate_report(session_id: str):
             table {{ width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 10px; overflow: hidden; border: 1px solid #334155; }}
             th, td {{ padding: 0.8rem 1rem; text-align: left; font-size: 0.85rem; border-bottom: 1px solid #334155; }}
             th {{ background: #0f172a; color: #94a3b8; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }}
-            tr:hover {{ background: #334155/50; }}
+            tr:hover {{ background: rgba(51, 65, 85, 0.5); }}
             .font-bold {{ font-weight: 600; color: #38bdf8; }}
             .badge {{ background: #0284c7; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-family: monospace; }}
         </style>
