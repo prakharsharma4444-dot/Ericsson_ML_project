@@ -1,4 +1,3 @@
-cat << 'EOF' > README.md
 #  Ericsson Support Ticket Analytics & AI Prediction Platform
 
 An end-to-end Machine Learning and Analytics platform designed to parse raw Ericsson support-ticket data, calculate SLA compliance metrics, and deliver automated AI predictions (e.g., ticket priority classification, resolution time estimation, and worker assignment).
@@ -34,34 +33,28 @@ An end-to-end Machine Learning and Analytics platform designed to parse raw Eric
 
 ### **Backend**
 - **Language:** Python 3.9+
-- **API Framework:** FastAPI / Flask
+- **API Framework:** FastAPI
+- **Server:** Uvicorn
 - **Data & ML:** Pandas, NumPy, Scikit-Learn
 
 ---
 
-## Project Structure
+##  Project Structure
 
 ```text
 ml-project/
-├── main.py                     # API server endpoints & routing
+├── main.py                     # FastAPI server endpoints & routing
 ├── pipeline.py                 # ML training & preprocessing pipeline
 ├── dashboard_stats.py          # Analytics aggregator & SLA metric calculations
 ├── ericsson_prep.py            # Data cleaning, column normalization & date parsing
-├── requirements.txt            # Python dependencies
+├── requirements.txt            # Essential Python dependencies
 │
 └── frontend/                   # React Vite frontend application
     ├── src/
-    │   ├── assets/             # Logos & static assets
-    │   ├── components/         # React components
-    │   │   ├── Dashboard.jsx            # Analytics Dashboard UI
-    │   │   ├── AIPredictions.jsx        # Target column / task selection
-    │   │   ├── DataExploreScreen.jsx    # Dataset summary & feature inspector
-    │   │   ├── PipelineResults.jsx      # Model evaluation & diagnostics
-    │   │   ├── ModelDeployment.jsx      # Export & deployment tools
-    │   │   ├── Sidebar.jsx              # Navigation sidebar
-    │   │   └── TopBar.jsx               # Header bar
-    │   ├── App.jsx             # Main application flow & state routing
-    │   ├── api.js              # Frontend API client
+    │   ├── assets/             # Static assets
+    │   ├── components/         # React components (Dashboard, AIPredictions, etc.)
+    │   ├── App.jsx             # Main application layout & routing
+    │   ├── api.js              # API communication layer
     │   └── main.jsx            # Vite entry point
     ├── package.json
     └── vite.config.js
@@ -69,7 +62,9 @@ ml-project/
 
 ---
 
-##  Quickstart Guide
+## Quickstart Guide
+
+Running this application requires two terminal windows: one for the Python backend API and one for the React frontend.
 
 ### Prerequisites
 - **Python:** `3.9+`
@@ -78,51 +73,50 @@ ml-project/
 
 ---
 
-### 1. Backend Setup
+### Terminal 1: Backend Setup (FastAPI)
 
 ```bash
-# Clone the repository
-git clone [https://github.com/your-username/ml-project.git](https://github.com/your-username/ml-project.git)
-cd ml-project
+# 1. Clone the repository
+git clone [https://github.com/prakharsharma4444-dot/Ericsson_ML_project.git](https://github.com/prakharsharma4444-dot/Ericsson_ML_project.git)
+cd Ericsson_ML_project
 
-# Create and activate a virtual environment
+# 2. Create and activate a virtual environment
 python3 -m venv .venv
 source .venv/bin/activate    # On Windows: .venv\Scripts\activate
 
-# Install Python dependencies
+# 3. Install backend dependencies
 pip install -r requirements.txt
 
-# Start the backend server
-python main.py
+# 4. Start the backend API server
+uvicorn main:app --reload
 ```
+*The backend API will run on `http://localhost:8000`.*
 
 ---
 
-### 2. Frontend Setup
+### Terminal 2: Frontend Setup (React + Vite)
 
-Open a new terminal window in the project root:
+Open a **new terminal tab/window** in the project root:
 
 ```bash
-# Navigate to frontend directory
+# 1. Navigate to the frontend directory
 cd frontend
 
-# Install Node modules
+# 2. Install frontend dependencies
 npm install
 
-# Start the Vite development server
+# 3. Start the Vite development server
 npm run dev
 ```
-
-The frontend application will be running at `http://localhost:5173`.
+*The web interface will open at `http://localhost:5173`.*
 
 ---
 
-## How to Use
+## 📖 How to Use
 
-1. **Upload Data:** Upload raw Ericsson support CSV files on the **Upload Data** tab.
-2. **Explore Data:** Inspect columns, shape, and dataset features in the Data Exploration view.
-3. **Select Prediction Task:** Click **Make Prediction with AI** or select a target column (*Priority*, *Resolution Time*, *Best Worker*) to train machine learning models.
-4. **Evaluate & Infer:** Review model performance metrics, feature importances, and run test predictions directly through the interactive form.
-5. **View Dashboard:** Navigate to the **Dashboard** tab to view live metrics, SLA compliance stats, and urgent case alerts.
+1. **Dashboard:** View real-time SLA metrics, weekly ticket volume trends, and urgent action items.
+2. **Upload Data:** Upload raw Ericsson support CSV files to inspect schema, data health, and missing values.
+3. **Train Models:** Select a prediction task (*Priority*, *Resolution Time*, or *Worker Assignment*) to automatically train and evaluate Machine Learning models.
+4. **Run Predictions:** Use the interactive prediction tool to estimate parameters for new incoming tickets.
 
 ---
