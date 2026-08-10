@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from jsonsafe import to_jsonable
 from session_store import Session, create_session, get_session
-from ericsson_prep import prepare_ticket_data
+from ericsson_prep import prepare_ticket_data, get_negativity_score
 from dashboard_stats import build_dashboard_summary
 from pipeline import (
     validate_inputs,
@@ -113,6 +113,82 @@ def build_feature_info(df: pd.DataFrame, cols):
             entry["options"] = [str(o) for o in options[:50]]
         info.append(entry)
     return info
+
+
+TFIDF_PREFIX = "tfidf_"
+TEXT_DERIVED_VIRTUAL_NAME = "case_description"
+
+
+def split_text_derived_columns(cols):
+    """
+    Separates the auto-generated tfidf_* / text_negativity_score columns
+    (opaque, not human-fillable) from everything else. Callers use this to
+    hide the former from the predict form and replace them with a single
+    free-text field instead.
+    """
+    text_derived = [c for c in cols if c.startswith(TFIDF_PREFIX) or c == "text_negativity_score"]
+    plain = [c for c in cols if c not in text_derived]
+    return plain, text_derived
+
+
+def build_feature_defaults(df, plain_cols, text_derived_cols):
+    """
+    One representative value per original feature column: mean for numeric,
+    most common value for categorical, 0 for text-derived columns (an
+    absent-keyword baseline). Used to fill in anything the user's predict
+    form doesn't ask about, instead of the misleading fallback of 0 for
+    every missing field.
+    """
+    defaults = {}
+    for col in plain_cols:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            val = df[col].mean()
+            defaults[col] = float(val) if pd.notna(val) else 0.0
+        else:
+            mode = df[col].mode()
+            defaults[col] = str(mode.iloc[0]) if not mode.empty else ""
+    for col in text_derived_cols:
+        defaults[col] = 0.0
+    return defaults
+
+
+def build_predict_form_fields(df, plain_cols, has_text_derived):
+    """
+    The actual list of fields to show a human. Text-derived columns never
+    appear individually — if any exist, they're represented by a single
+    free-text 'case_description' field instead.
+    """
+    fields = build_feature_info(df, plain_cols)
+    if has_text_derived:
+        fields = [{"name": TEXT_DERIVED_VIRTUAL_NAME, "is_numeric": False, "is_text": True}] + fields
+    return fields
+
+
+def rank_top_features(model, feature_columns, plain_cols, text_derived_cols):
+    """
+    Aggregates encoded-column importances back to the original, human-facing
+    field they came from: one-hot dummies collapse back to their parent
+    categorical column, and every tfidf_*/text_negativity_score column
+    collapses into the single 'case_description' field. Returns the top
+    original field names, most important first.
+    """
+    importances = get_feature_importance(model, feature_columns)
+    if not importances:
+        return []
+
+    text_derived_set = set(text_derived_cols)
+    agg = {}
+    for encoded_col, score in importances:
+        if encoded_col in text_derived_set:
+            parent = TEXT_DERIVED_VIRTUAL_NAME
+        else:
+            parent = next(
+                (c for c in plain_cols if encoded_col == c or encoded_col.startswith(c + "_")),
+                encoded_col,
+            )
+        agg[parent] = agg.get(parent, 0.0) + float(score)
+
+    return sorted(agg, key=agg.get, reverse=True)
 
 
 def generate_column_stats(df):
@@ -346,8 +422,9 @@ def train(session_id: str, req: TrainRequest):
     session = get_session_or_404(session_id)
     df = session.df_raw.copy()
 
+    tfidf_vectorizer = None
     if req.task:
-        df, target_col = prepare_ticket_data(df, task=req.task)
+        df, target_col, tfidf_vectorizer = prepare_ticket_data(df, task=req.task)
     elif req.target_col:
         target_col = req.target_col
     else:
@@ -371,7 +448,12 @@ def train(session_id: str, req: TrainRequest):
     df, clean_report = clean_data(df)
 
     original_feature_cols = [c for c in df.columns if c not in (target_col, target_col_final)]
-    original_feature_info = build_feature_info(df, original_feature_cols)
+    plain_feature_cols, text_derived_cols = split_text_derived_columns(original_feature_cols)
+    has_text_derived = bool(text_derived_cols) and tfidf_vectorizer is not None
+
+    original_feature_info = build_predict_form_fields(df, plain_feature_cols, has_text_derived)
+    original_feature_defaults = build_feature_defaults(df, plain_feature_cols, text_derived_cols)
+
     categorical_columns = [
         c for c in original_feature_cols if df[c].dtype == "object"
     ]
@@ -412,6 +494,7 @@ def train(session_id: str, req: TrainRequest):
         raise HTTPException(400, str(e))
 
     recommended_name = next(name for name, m in trained_models.items() if m is best_model)
+    top_features = rank_top_features(best_model, session_feature_columns := X_train.columns.tolist(), plain_feature_cols, text_derived_cols)
 
     session.target_col = target_col
     session.problem_type = problem_type
@@ -421,12 +504,16 @@ def train(session_id: str, req: TrainRequest):
     session.outlier_summary = outlier_summary
     session.imbalance_counts = imbalance_counts
     session.original_feature_info = original_feature_info
+    session.original_feature_defaults = original_feature_defaults
+    session.text_derived_cols = text_derived_cols
+    session.tfidf_vectorizer = tfidf_vectorizer if has_text_derived else None
     session.categorical_columns = categorical_columns
-    session.feature_columns = X_train.columns.tolist()
+    session.feature_columns = session_feature_columns
     session.scaler = scaler
     session.trained_models = trained_models
     session.results = results_df.to_dict("records")
     session.recommended_model = recommended_name
+    session.top_features = top_features
     session.label_classes = label_classes
 
     return to_jsonable({
@@ -440,6 +527,7 @@ def train(session_id: str, req: TrainRequest):
         "warnings": warnings,
         "feature_columns": session.feature_columns,
         "original_feature_info": original_feature_info,
+        "top_features": top_features,
     })
 
 
@@ -489,7 +577,24 @@ def predict(session_id: str, req: PredictRequest):
     if model is None:
         raise HTTPException(404, f"No trained model named '{req.model_name}'.")
 
-    sample_df = pd.DataFrame([req.sample])
+    # Start from the dataset's real averages/most-common values, not 0 —
+    # 0 is a plausible real value for many columns and silently distorts
+    # the prediction for every field the user didn't fill in.
+    full_sample = dict(getattr(session, "original_feature_defaults", None) or {})
+
+    user_sample = dict(req.sample)
+    case_description = user_sample.pop(TEXT_DERIVED_VIRTUAL_NAME, None)
+    full_sample.update(user_sample)
+
+    if case_description and getattr(session, "tfidf_vectorizer", None) is not None:
+        vectorizer = session.tfidf_vectorizer
+        vec = vectorizer.transform([str(case_description).lower()])
+        tfidf_names = [f"tfidf_{w}" for w in vectorizer.get_feature_names_out()]
+        for name, val in zip(tfidf_names, vec.toarray()[0]):
+            full_sample[name] = float(val)
+        full_sample["text_negativity_score"] = get_negativity_score(case_description)
+
+    sample_df = pd.DataFrame([full_sample])
 
     cat_cols = [c for c in (session.categorical_columns or []) if c in sample_df.columns]
     if cat_cols:

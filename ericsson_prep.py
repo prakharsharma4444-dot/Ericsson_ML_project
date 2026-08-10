@@ -1,6 +1,6 @@
 """
 ericsson_prep.py — Preprocessing pipeline for Ericsson support tickets.
-Includes TF-IDF keyword extraction, optional negativity score, and SLA duration logic.
+Includes TF-IDF keyword extraction, non-numerical value sanitization, and SLA duration logic.
 """
 
 import re
@@ -35,6 +35,25 @@ def _parse_dates(df):
     return df
 
 
+def _clean_non_numeric_values(df):
+    """
+    Coerces mixed/dirty non-numeric values in numeric SLA/time columns into numbers safely.
+    """
+    df = df.copy()
+    numeric_target_cols = [
+        "hours_open", "target_callback_hours", "target_solution_hours", 
+        "resolution_hours", "resolution_time", "target_callback_time"
+    ]
+    
+    for col in df.columns:
+        if col in numeric_target_cols or col.startswith("prod_") or col.startswith("tfidf_"):
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+            median_val = df[col].median() if not np.isnan(df[col].median()) else 0
+            df[col] = df[col].fillna(median_val)
+            
+    return df
+
+
 def _add_sla_duration_features(df):
     """Computes SLA target durations in hours."""
     df = df.copy()
@@ -47,7 +66,7 @@ def _add_sla_duration_features(df):
             df["target_callback_hours"] = (
                 (df["call back target"] - df["date open"]).dt.total_seconds() / 3600
             )
-        ref = pd.Timestamp.now()
+        ref = df["date open"].max() if not df["date open"].dropna().empty else pd.Timestamp.now()
         df["hours_open"] = ((ref - df["date open"]).dt.total_seconds() / 3600).clip(lower=0)
     return df
 
@@ -61,28 +80,25 @@ def _get_negativity_score(text):
 
 
 def _add_text_features(df, max_features=12):
-    """Extracts TF-IDF keywords and negativity scores from text fields."""
     df = df.copy()
     
     subject_text = df["subject"].fillna("").astype(str) if "subject" in df.columns else pd.Series("", index=df.index)
     desc_text = df["desc"].fillna("").astype(str) if "desc" in df.columns else pd.Series("", index=df.index)
     full_text = (subject_text + " " + desc_text).str.lower()
     
-    # 1. Negativity score
     df["text_negativity_score"] = full_text.apply(_get_negativity_score)
     
-    # 2. TF-IDF features
+    tfidf_vectorizer = None
     try:
-        tfidf = TfidfVectorizer(max_features=max_features, stop_words="english")
-        tfidf_matrix = tfidf.fit_transform(full_text)
-        feature_names = [f"tfidf_{word}" for word in tfidf.get_feature_names_out()]
+        tfidf_vectorizer = TfidfVectorizer(max_features=max_features, stop_words="english")
+        tfidf_matrix = tfidf_vectorizer.fit_transform(full_text)
+        feature_names = [f"tfidf_{word}" for word in tfidf_vectorizer.get_feature_names_out()]
         tfidf_df = pd.DataFrame(tfidf_matrix.toarray(), columns=feature_names, index=df.index)
         df = pd.concat([df, tfidf_df], axis=1)
     except Exception:
-        # Fallback if text is empty or TF-IDF fails
-        pass
+        tfidf_vectorizer = None
 
-    return df
+    return df, tfidf_vectorizer
 
 
 def _compute_resolution_hours(df):
@@ -93,6 +109,10 @@ def _compute_resolution_hours(df):
     return df
 
 
+def get_negativity_score(text):
+    return _get_negativity_score(text)
+
+
 def prepare_ticket_data(df_raw, task):
     if task not in VALID_TASKS:
         raise ValueError(f"task must be one of {VALID_TASKS}, got '{task}'")
@@ -100,11 +120,9 @@ def prepare_ticket_data(df_raw, task):
     df = _normalize_columns(df_raw)
     df = _parse_dates(df)
     
-    # Extract features
     df = _add_sla_duration_features(df)
-    df = _add_text_features(df)
+    df, tfidf_vectorizer = _add_text_features(df)
 
-    # Encode product domain
     if "product" in df.columns:
         product_dummies = pd.get_dummies(df["product"], prefix="prod").astype(int)
         df = pd.concat([df, product_dummies], axis=1)
@@ -114,20 +132,22 @@ def prepare_ticket_data(df_raw, task):
         target_col = "resolution_hours"
     elif task == "priority":
         target_col = "priority"
-    else:  # task == "owner"
+    else:
         target_col = "case owner"
 
     if target_col not in df.columns:
         raise ValueError(f"Expected column '{target_col}' not found in dataset.")
 
-    # Drop raw unparsed text, dates, PII
+    # Clean non-numeric values
+    df = _clean_non_numeric_values(df)
+
     drop_cols = set(ID_AND_PII_COLUMNS) | set(DATE_COLUMNS) | set(TEXT_COLUMNS) | {"status", "product"}
 
-    # Prevent target leakage
     if task == "resolution":
         drop_cols.add("priority")
+        drop_cols.add("target_solution_hours")
 
     drop_cols = {c for c in drop_cols if c in df.columns and c != target_col}
     df = df.drop(columns=list(drop_cols))
 
-    return df, target_col
+    return df, target_col, tfidf_vectorizer

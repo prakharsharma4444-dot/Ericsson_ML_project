@@ -5,7 +5,7 @@ import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import UploadCard from './components/UploadCard';
 import Dashboard from './components/Dashboard';
-import { getColumns, trainModel, predictSample, downloadModel, getFeatureImportance, getDashboardSummary } from './api';
+import { getColumns, trainModel, predictSample, getFeatureImportance, getDashboardSummary } from './api';
 import PredictionForm from './components/PredictionForm';
 import DataExploreScreen from './components/DataExploreScreen';
 import AIPredictions from './components/AIPredictions';
@@ -26,6 +26,9 @@ function App() {
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState(null);
+  
+  // Real-time Global Search State
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (activeNav === 'Dashboard' && sessionId) {
@@ -94,7 +97,6 @@ function App() {
     setLoading(false);
   };
 
-  // Navigates directly to the AI Prediction / Target selection screen
   const handleMakePrediction = () => {
     setActiveNav('Upload Data');
     if (file && columns) {
@@ -117,7 +119,7 @@ function App() {
     <div className="flex h-screen bg-gray-50">
       <Sidebar active={activeNav} onNavigate={setActiveNav} />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <TopBar />
+        <TopBar searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <main className="flex-1 overflow-y-auto p-6">
           {error && (
             <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
@@ -135,7 +137,11 @@ function App() {
           {activeNav === 'Dashboard' && (
             <>
               {!sessionId && (
-                <Dashboard onMakePrediction={handleMakePrediction} />
+                <Dashboard
+                  searchQuery={searchQuery}
+                  onClearSearch={() => setSearchQuery('')}
+                  onMakePrediction={handleMakePrediction}
+                />
               )}
               {sessionId && dashboardLoading && (
                 <div className="text-center py-16 text-gray-500">Loading dashboard...</div>
@@ -153,6 +159,8 @@ function App() {
                   recentCases={dashboardData.recentCases}
                   attentionCases={dashboardData.attentionCases}
                   volumeData={dashboardData.volumeData}
+                  searchQuery={searchQuery}
+                  onClearSearch={() => setSearchQuery('')}
                   onMakePrediction={handleMakePrediction}
                 />
               )}
@@ -162,10 +170,8 @@ function App() {
           {/* UPLOAD DATA / ML TRAINING FLOW */}
           {activeNav === 'Upload Data' && (
             <>
-              {/* STEP 1: Upload File */}
               {!file && <UploadCard onFileSelect={handleFileSelect} />}
 
-              {/* STEP 2: Data Exploration */}
               {file && columns && !explored && !analysis && (
                 <DataExploreScreen
                   sessionId={sessionId}
@@ -179,7 +185,6 @@ function App() {
                 />
               )}
 
-              {/* STEP 3: Model Target Selection */}
               {file && columns && explored && !analysis && (
                 <div>
                   <button
@@ -197,7 +202,6 @@ function App() {
                 </div>
               )}
 
-              {/* STEP 4: Pipeline Results & Model Diagnostics */}
               {analysis && (
                 <div className="space-y-6">
                   <PipelineResults
@@ -214,7 +218,6 @@ function App() {
                     }}
                   />
 
-                  {/* Prediction Form & Results */}
                   {selectedModel && (
                     <>
                       <PredictionForm
