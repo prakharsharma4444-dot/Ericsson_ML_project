@@ -13,10 +13,6 @@ const MODEL_DESCRIPTIONS = {
   'Gradient Boosting (Tuned)': 'A sequential ensemble method with hyperparameters tuned for this dataset.',
 };
 
-// Reuses the same `results` array your pipeline already produces
-// (accuracy/precision/recall/f1 for classification, r2/mae/rmse for
-// regression) — this only changes the layout, not the underlying data
-// or training logic.
 function PipelineResults({ problemType, initialShape, finalShape, results = [], onSelectModel, onBack }) {
   const isClassification = problemType === 'classification';
 
@@ -29,42 +25,50 @@ function PipelineResults({ problemType, initialShape, finalShape, results = [], 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-800 transition">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition">
           <ArrowLeft size={14} /> Back to Prediction Selection
         </button>
-        <h2 className="text-xl font-bold text-slate-800">Pipeline Results</h2>
+        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Pipeline Results</h2>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-medium text-slate-500">Problem Type</p>
-            <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center"><Hash size={14} className="text-blue-600" /></div>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Problem Type</p>
+            <div className="w-7 h-7 rounded-full bg-blue-50 dark:bg-blue-950/50 flex items-center justify-center">
+              <Hash size={14} className="text-blue-600 dark:text-blue-400" />
+            </div>
           </div>
-          <p className="text-lg font-bold text-slate-800 uppercase">{problemType}</p>
+          <p className="text-lg font-bold text-slate-800 dark:text-slate-100 uppercase">{problemType}</p>
         </div>
-        <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
+
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-medium text-slate-500">Initial Shape</p>
-            <div className="w-7 h-7 rounded-full bg-purple-50 flex items-center justify-center"><Rows3 size={14} className="text-purple-600" /></div>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Initial Shape</p>
+            <div className="w-7 h-7 rounded-full bg-purple-50 dark:bg-purple-950/50 flex items-center justify-center">
+              <Rows3 size={14} className="text-purple-600 dark:text-purple-400" />
+            </div>
           </div>
-          <p className="text-lg font-bold text-slate-800">{initialShape}</p>
+          <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{initialShape}</p>
         </div>
-        <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
+
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-medium text-slate-500">Final Shape</p>
-            <div className="w-7 h-7 rounded-full bg-green-50 flex items-center justify-center"><Columns3 size={14} className="text-green-600" /></div>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Final Shape</p>
+            <div className="w-7 h-7 rounded-full bg-green-50 dark:bg-green-950/50 flex items-center justify-center">
+              <Columns3 size={14} className="text-green-600 dark:text-green-400" />
+            </div>
           </div>
-          <p className="text-lg font-bold text-slate-800">{finalShape}</p>
+          <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{finalShape}</p>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
-        <h3 className="text-base font-semibold text-slate-800 mb-4">Model Performance</h3>
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
+        <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 mb-4">Model Performance</h3>
 
-        <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg p-3 mb-5">
-          <Info size={16} className="text-blue-500 mt-0.5 flex-shrink-0" />
-          <p className="text-xs text-blue-800">
+        <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/60 rounded-lg p-3 mb-5">
+          <Info size={16} className="text-blue-500 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+          <p className="text-xs text-blue-800 dark:text-blue-200">
             <span className="font-semibold">Model Overview: </span>
             These models analyze your dataset to predict outcomes based on historical patterns. Each score below represents a
             different aspect of how well the model performed, helping you identify the most reliable predictor for your specific use case.
@@ -74,7 +78,7 @@ function PipelineResults({ problemType, initialShape, finalShape, results = [], 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-slate-500 border-b border-slate-100">
+              <tr className="text-left text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
                 <th className="pb-2.5 font-medium">Model</th>
                 <th className="pb-2.5 font-medium">Description</th>
                 {isClassification ? (
@@ -96,27 +100,29 @@ function PipelineResults({ problemType, initialShape, finalShape, results = [], 
             </thead>
             <tbody>
               {results.map((r) => (
-                <tr key={r.model} className="border-b border-slate-50 last:border-0 align-top">
-                  <td className="py-3.5 font-semibold text-slate-800 whitespace-nowrap">{r.model}</td>
-                  <td className="py-3.5 text-slate-500 text-xs max-w-xs pr-4">{MODEL_DESCRIPTIONS[r.model] || 'A machine learning model trained on this dataset.'}</td>
+                <tr key={r.model} className="border-b border-slate-50 dark:border-slate-800/60 last:border-0 align-top">
+                  <td className="py-3.5 font-semibold text-slate-800 dark:text-slate-100 whitespace-nowrap">{r.model}</td>
+                  <td className="py-3.5 text-slate-500 dark:text-slate-400 text-xs max-w-xs pr-4">
+                    {MODEL_DESCRIPTIONS[r.model] || 'A machine learning model trained on this dataset.'}
+                  </td>
                   {isClassification ? (
                     <>
-                      <td className="py-3.5 font-medium text-slate-700">{(r.accuracy * 100).toFixed(2)}%</td>
-                      <td className="py-3.5 font-medium text-slate-700">{(r.precision * 100).toFixed(2)}%</td>
-                      <td className="py-3.5 font-medium text-slate-700">{(r.recall * 100).toFixed(2)}%</td>
-                      <td className="py-3.5 font-medium text-slate-700">{(r.f1 * 100).toFixed(2)}%</td>
+                      <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{(r.accuracy * 100).toFixed(2)}%</td>
+                      <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{(r.precision * 100).toFixed(2)}%</td>
+                      <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{(r.recall * 100).toFixed(2)}%</td>
+                      <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{(r.f1 * 100).toFixed(2)}%</td>
                     </>
                   ) : (
                     <>
-                      <td className="py-3.5 font-medium text-slate-700">{((r.r2 ?? r.r2_score) * 100).toFixed(2)}%</td>
-                      <td className="py-3.5 font-medium text-slate-700">{r.mae?.toFixed(0)}</td>
-                      <td className="py-3.5 font-medium text-slate-700">{r.rmse?.toFixed(0)}</td>
+                      <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{((r.r2 ?? r.r2_score) * 100).toFixed(2)}%</td>
+                      <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{r.mae?.toFixed(0)}</td>
+                      <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{r.rmse?.toFixed(0)}</td>
                     </>
                   )}
                   <td className="py-3.5 text-right">
                     <button
                       onClick={() => onSelectModel && onSelectModel(r)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 transition"
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 dark:hover:bg-blue-600 text-slate-700 dark:text-slate-200 hover:text-white dark:hover:text-white transition"
                     >
                       Select Model
                     </button>
@@ -128,15 +134,15 @@ function PipelineResults({ problemType, initialShape, finalShape, results = [], 
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
-        <h3 className="text-base font-semibold text-slate-800 mb-1">Model Visual Comparison</h3>
-        <p className="text-xs text-slate-500 mb-4">Comparing primary metrics across models</p>
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
+        <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 mb-1">Model Visual Comparison</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Comparing primary metrics across models</p>
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-              <XAxis dataKey="model" tick={{ fontSize: 10 }} interval={0} angle={-15} textAnchor="end" />
-              <YAxis tick={{ fontSize: 11 }} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#94A3B8" strokeOpacity={0.2} />
+              <XAxis dataKey="model" tick={{ fontSize: 10, fill: '#94A3B8' }} interval={0} angle={-15} textAnchor="end" />
+              <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} />
               <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
               <Bar dataKey="primary" name={isClassification ? 'Accuracy' : 'R² Score'} fill="#CBD5E1" radius={[3, 3, 0, 0]} />
               <Bar dataKey="secondary" name={isClassification ? 'F1' : 'MAE'} fill="#2563EB" radius={[3, 3, 0, 0]} />
