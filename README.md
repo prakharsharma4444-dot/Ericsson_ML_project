@@ -77,7 +77,7 @@ Running this application requires two terminal windows: one for the Python backe
 
 ```bash
 # 1. Clone the repository
-git clone [https://github.com/prakharsharma4444-dot/Ericsson_ML_project.git](https://github.com/prakharsharma4444-dot/Ericsson_ML_project.git)
+git clone https://github.com/prakharsharma4444-dot/Ericsson_ML_project.git
 cd Ericsson_ML_project
 
 # 2. Create and activate a virtual environment
@@ -109,6 +109,19 @@ npm install
 npm run dev
 ```
 *The web interface will open at `http://localhost:5173`.*
+
+---
+
+### Optional: Run Both Together (One Command)
+
+Once you've completed the setup above at least once, you can start both the backend and frontend together with a single command from the `frontend/` directory:
+
+```bash
+cd frontend
+npm run dev:all
+```
+
+This uses `concurrently` to run both servers in one terminal — backend on `http://localhost:8000` and frontend on `http://localhost:5173`.
 
 ---
 
