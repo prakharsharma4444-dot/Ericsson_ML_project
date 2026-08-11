@@ -1,12 +1,16 @@
-const API_BASE = "http://localhost:8000";
+// Dynamic getter for configured FastAPI Server URL
+const getApiBase = () => {
+  const settings = JSON.parse(localStorage.getItem('app_settings') || '{}');
+  return settings.apiUrl || 'http://localhost:8000';
+};
+
 export async function getColumns(file) {
   const formData = new FormData();
   formData.append("file", file);
-  const res = await fetch(`${API_BASE}/api/sessions/upload`, { method: "POST", body: formData });
+  const res = await fetch(`${getApiBase()}/api/sessions/upload`, { method: "POST", body: formData });
   if (!res.ok) throw new Error(`Upload failed (${res.status})`);
   const data = await res.json();
   
-  // Return both the session_id and the columns list
   return {
     sessionId: data.session_id,
     columns: Array.isArray(data.columns) 
@@ -16,8 +20,15 @@ export async function getColumns(file) {
 }
 
 export async function trainModel(sessionId, targetCol, task = null) {
-  const body = task ? { target_col: targetCol || "", task } : { target_col: targetCol };
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/train`, {
+  const settings = JSON.parse(localStorage.getItem('app_settings') || '{}');
+  const testSplitRatio = settings.testSplit ? settings.testSplit / 100 : undefined;
+
+  const body = {
+    ...(task ? { target_col: targetCol || "", task } : { target_col: targetCol }),
+    ...(testSplitRatio !== undefined ? { test_size: testSplitRatio } : {})
+  };
+
+  const res = await fetch(`${getApiBase()}/api/sessions/${sessionId}/train`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
@@ -29,13 +40,13 @@ export async function trainModel(sessionId, targetCol, task = null) {
   }
   return res.json();
 }
+
 export async function analyzeDataset(file, targetCol) {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("target_col", targetCol);
 
-  // Add "/api" right before "/analyze"
-  const res = await fetch(`${API_BASE}/api/analyze`, { 
+  const res = await fetch(`${getApiBase()}/api/analyze`, { 
     method: "POST", 
     body: formData 
   });
@@ -46,8 +57,9 @@ export async function analyzeDataset(file, targetCol) {
   }
   return res.json();
 }
+
 export async function predictSample(sessionId, modelName, sample) {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/predict`, {
+  const res = await fetch(`${getApiBase()}/api/sessions/${sessionId}/predict`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model_name: modelName, sample }),
@@ -60,13 +72,13 @@ export async function predictSample(sessionId, modelName, sample) {
 }
 
 export async function getFeatureImportance(sessionId, modelName) {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/feature-importance/${modelName}`);
+  const res = await fetch(`${getApiBase()}/api/sessions/${sessionId}/feature-importance/${modelName}`);
   if (!res.ok) throw new Error(`getFeatureImportance failed (${res.status})`);
   return res.json();
 }
 
 export async function getDashboardSummary(sessionId) {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/dashboard-summary`);
+  const res = await fetch(`${getApiBase()}/api/sessions/${sessionId}/dashboard-summary`);
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`getDashboardSummary failed (${res.status}): ${text}`);
@@ -75,24 +87,25 @@ export async function getDashboardSummary(sessionId) {
 }
 
 export async function getPreview(sessionId) {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/preview`);
+  const res = await fetch(`${getApiBase()}/api/sessions/${sessionId}/preview`);
   if (!res.ok) throw new Error(`getPreview failed (${res.status})`);
   return res.json();
 }
 
 export async function compareColumns(sessionId, col1, col2) {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/compare?col1=${encodeURIComponent(col1)}&col2=${encodeURIComponent(col2)}`);
+  const res = await fetch(`${getApiBase()}/api/sessions/${sessionId}/compare?col1=${encodeURIComponent(col1)}&col2=${encodeURIComponent(col2)}`);
   if (!res.ok) throw new Error(`compareColumns failed (${res.status})`);
   return res.json();
 }
+
 export async function getColumnDetail(sessionId, colName) {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/columns/${encodeURIComponent(colName)}`);
+  const res = await fetch(`${getApiBase()}/api/sessions/${sessionId}/columns/${encodeURIComponent(colName)}`);
   if (!res.ok) throw new Error('Failed to fetch column details');
   return res.json();
 }
-// Feature 4: Fetch Pivot / Group-By Data
+
 export async function getPivotData(sessionId, catCol, numCol, aggFunc) {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/pivot`, {
+  const res = await fetch(`${getApiBase()}/api/sessions/${sessionId}/pivot`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -110,13 +123,12 @@ export async function getPivotData(sessionId, catCol, numCol, aggFunc) {
   return await res.json();
 }
 
-// Feature 5: Get Profiling Report URL
 export function getReportUrl(sessionId) {
-  return `${API_BASE}/api/sessions/${sessionId}/report`;
+  return `${getApiBase()}/api/sessions/${sessionId}/report`;
 }
 
 export async function downloadModel(sessionId, modelName) {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/download-model/${encodeURIComponent(modelName)}`);
+  const res = await fetch(`${getApiBase()}/api/sessions/${sessionId}/download-model/${encodeURIComponent(modelName)}`);
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`downloadModel failed (${res.status}): ${text}`);

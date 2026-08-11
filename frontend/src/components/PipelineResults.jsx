@@ -154,4 +154,4 @@ function PipelineResults({ problemType, initialShape, finalShape, results = [], 
   );
 }
 
-export default PipelineResults;
+export default PipelineResults

@@ -5,6 +5,8 @@ import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import UploadCard from './components/UploadCard';
 import Dashboard from './components/Dashboard';
+import HistoryScreen from './components/HistoryScreen';
+import SettingsScreen from './components/SettingsScreen';
 import { getColumns, trainModel, predictSample, getFeatureImportance, getDashboardSummary } from './api';
 import PredictionForm from './components/PredictionForm';
 import DataExploreScreen from './components/DataExploreScreen';
@@ -26,9 +28,30 @@ function App() {
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState(null);
-  
-  // Real-time Global Search State
   const [searchQuery, setSearchQuery] = useState('');
+
+  // 1. Read theme synchronously on initial load so it never resets when switching tabs
+  const [theme, setTheme] = useState(() => {
+    const saved = JSON.parse(localStorage.getItem('app_settings') || '{}');
+    return saved.theme || 'light';
+  });
+
+  // 2. Synchronize 'dark' class on HTML document root for global Tailwind dark mode
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  }, [theme]);
+
+  // 3. Immediately persist theme change to localStorage
+  const handleThemeChange = (newTheme) => {
+    setTheme(newTheme);
+    const settings = JSON.parse(localStorage.getItem('app_settings') || '{}');
+    localStorage.setItem('app_settings', JSON.stringify({ ...settings, theme: newTheme }));
+  };
 
   useEffect(() => {
     if (activeNav === 'Dashboard' && sessionId) {
@@ -40,6 +63,19 @@ function App() {
         .finally(() => setDashboardLoading(false));
     }
   }, [activeNav, sessionId]);
+
+  const handleNewAnalysis = () => {
+    setFile(null);
+    setColumns(null);
+    setAnalysis(null);
+    setSelectedModel(null);
+    setSessionId(null);
+    setPrediction(null);
+    setExplored(false);
+    setFeatureImportance(null);
+    setError(null);
+    setActiveNav('Upload Data');
+  };
 
   const handleFileSelect = async (selectedFile) => {
     setFile(selectedFile);
@@ -63,6 +99,19 @@ function App() {
     try {
       const result = await trainModel(sessionId, targetCol, task);
       setAnalysis(result);
+
+      const newRun = {
+        id: `RUN-${Date.now().toString().slice(-6)}`,
+        dataset: file?.name || 'Dataset.csv',
+        target: targetCol || 'Auto Target',
+        model: result?.best_model || result?.problem_type || 'Trained Model',
+        accuracy: result?.metrics?.accuracy ? `${(result.metrics.accuracy * 100).toFixed(1)}%` : 'Completed',
+        date: new Date().toLocaleString(),
+        status: 'Completed',
+      };
+
+      const existingHistory = JSON.parse(localStorage.getItem('ml_history') || '[]');
+      localStorage.setItem('ml_history', JSON.stringify([newRun, ...existingHistory]));
     } catch (err) {
       console.error(err);
       setError(err.message);
@@ -116,24 +165,31 @@ function App() {
   const modelsList = getModelsList();
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar active={activeNav} onNavigate={setActiveNav} />
+    <div className={`flex h-screen overflow-hidden transition-colors duration-200 ${
+      theme === 'dark' ? 'bg-slate-900 text-slate-100 dark' : 'bg-gray-50 text-slate-900'
+    }`}>
+      <Sidebar
+        active={activeNav}
+        onNavigate={setActiveNav}
+        onNewAnalysis={handleNewAnalysis}
+        theme={theme}
+      />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <TopBar searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <main className="flex-1 overflow-y-auto p-6">
+        <TopBar searchQuery={searchQuery} onSearchChange={setSearchQuery} theme={theme} />
+        <main className={`flex-1 overflow-y-auto p-6 ${theme === 'dark' ? 'bg-slate-900' : 'bg-gray-50'}`}>
           {error && (
-            <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+            <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg text-xs font-semibold">
               {error}
             </div>
           )}
 
           {loading && (
-            <div className="text-center py-10 text-gray-600 font-medium">
+            <div className={`text-center py-10 font-medium text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-gray-600'}`}>
               Running pipeline...
             </div>
           )}
 
-          {/* DASHBOARD PAGE */}
+          {/* DASHBOARD TAB */}
           {activeNav === 'Dashboard' && (
             <>
               {!sessionId && (
@@ -141,13 +197,14 @@ function App() {
                   searchQuery={searchQuery}
                   onClearSearch={() => setSearchQuery('')}
                   onMakePrediction={handleMakePrediction}
+                  theme={theme}
                 />
               )}
               {sessionId && dashboardLoading && (
-                <div className="text-center py-16 text-gray-500">Loading dashboard...</div>
+                <div className="text-center py-16 text-gray-500 text-xs">Loading dashboard...</div>
               )}
               {sessionId && dashboardError && (
-                <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg text-xs">
                   {dashboardError}
                 </div>
               )}
@@ -162,15 +219,16 @@ function App() {
                   searchQuery={searchQuery}
                   onClearSearch={() => setSearchQuery('')}
                   onMakePrediction={handleMakePrediction}
+                  theme={theme}
                 />
               )}
             </>
           )}
 
-          {/* UPLOAD DATA / ML TRAINING FLOW */}
+          {/* UPLOAD DATA TAB */}
           {activeNav === 'Upload Data' && (
             <>
-              {!file && <UploadCard onFileSelect={handleFileSelect} />}
+              {!file && <UploadCard onFileSelect={handleFileSelect} theme={theme} />}
 
               {file && columns && !explored && !analysis && (
                 <DataExploreScreen
@@ -182,6 +240,7 @@ function App() {
                     setColumns(null);
                     setSessionId(null);
                   }}
+                  theme={theme}
                 />
               )}
 
@@ -189,7 +248,7 @@ function App() {
                 <div>
                   <button
                     onClick={() => setExplored(false)}
-                    className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-800 transition mb-4"
+                    className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-800 dark:text-slate-400 dark:hover:text-slate-200 transition mb-4"
                   >
                     <ArrowLeft size={14} /> Back to Data Exploration
                   </button>
@@ -198,6 +257,7 @@ function App() {
                     columns={columns}
                     onSelectTarget={handleTargetSelect}
                     onSelectTask={(task) => handleTargetSelect(null, task)}
+                    theme={theme}
                   />
                 </div>
               )}
@@ -216,6 +276,7 @@ function App() {
                       setPrediction(null);
                       setFeatureImportance(null);
                     }}
+                    theme={theme}
                   />
 
                   {selectedModel && (
@@ -224,15 +285,16 @@ function App() {
                         featureInfo={analysis.original_feature_info || []}
                         onPredict={handlePredict}
                         loading={loading}
+                        theme={theme}
                       />
                       {prediction && (
-                        <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-100">
+                        <div className={`p-6 rounded-xl shadow-sm border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                           <h3 className="text-lg font-semibold mb-2">Prediction Result</h3>
                           <p className="text-2xl font-bold text-blue-600">
                             {prediction.predicted_class ?? prediction.prediction}
                           </p>
                           {prediction.confidence && (
-                            <p className="text-sm text-gray-500 mt-1">
+                            <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
                               Confidence: {(prediction.confidence * 100).toFixed(1)}%
                             </p>
                           )}
@@ -243,6 +305,14 @@ function App() {
                 </div>
               )}
             </>
+          )}
+
+          {/* HISTORY TAB */}
+          {activeNav === 'History' && <HistoryScreen theme={theme} />}
+
+          {/* SETTINGS TAB */}
+          {activeNav === 'Settings' && (
+            <SettingsScreen theme={theme} onThemeChange={handleThemeChange} />
           )}
         </main>
       </div>
