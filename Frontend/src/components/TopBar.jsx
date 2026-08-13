@@ -1,6 +1,6 @@
 import { Search, Bell } from 'lucide-react';
+function TopBar({ searchQuery, onSearchChange }) {
 
-function TopBar({ searchQuery, setSearchQuery }) {
   return (
     <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 flex items-center justify-between transition-colors">
       {/* Search Input */}
@@ -9,7 +9,7 @@ function TopBar({ searchQuery, setSearchQuery }) {
         <input
           type="text"
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search cases by ID, subject, status..."
           className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-9 pr-10 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
         />

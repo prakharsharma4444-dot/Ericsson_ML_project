@@ -16,9 +16,10 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+
 from pydantic import BaseModel
 
 from jsonsafe import to_jsonable
@@ -92,6 +93,28 @@ def get_session_or_404(session_id: str) -> Session:
     if session is None:
         raise HTTPException(404, "Session not found or expired. Please upload your CSV again.")
     return session
+
+
+def read_uploaded_file(filename: str, content: bytes) -> pd.DataFrame:
+    """
+    Reads an uploaded file into a DataFrame based on its extension.
+    Shared by the upload endpoint and the merge endpoint so both accept
+    the same set of formats.
+    """
+    lower = filename.lower()
+    try:
+        if lower.endswith(".csv"):
+            return pd.read_csv(io.BytesIO(content))
+        elif lower.endswith(".xlsx"):
+            return pd.read_excel(io.BytesIO(content), engine="openpyxl")
+        elif lower.endswith(".xls"):
+            return pd.read_excel(io.BytesIO(content), engine="xlrd")
+        else:
+            raise HTTPException(400, "Please upload a .csv, .xlsx, or .xls file.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Could not read '{filename}': {e}")
 
 
 def build_feature_info(df: pd.DataFrame, cols):
@@ -248,14 +271,11 @@ def health():
 
 @app.post("/api/sessions/upload")
 async def upload(file: UploadFile = File(...)):
-    if not file.filename.lower().endswith(".csv"):
-        raise HTTPException(400, "Please upload a .csv file.")
+    if not file.filename.lower().endswith((".csv", ".xlsx", ".xls")):
+        raise HTTPException(400, "Please upload a .csv, .xlsx, or .xls file.")
 
     content = await file.read()
-    try:
-        df = pd.read_csv(io.BytesIO(content))
-    except Exception as e:
-        raise HTTPException(400, f"Could not read that CSV: {e}")
+    df = read_uploaded_file(file.filename, content)
 
     if df.shape[1] == 0:
         raise HTTPException(400, "That file has no columns.")
@@ -271,6 +291,105 @@ async def upload(file: UploadFile = File(...)):
         "n_cols": len(df.columns),
         "columns": to_jsonable(get_column_info(df)),
     }
+
+
+ID_LIKE_KEYWORDS = ("id", "number", "key", "code", "no")
+
+
+def pick_join_column(df_a: pd.DataFrame, df_b: pd.DataFrame, common_cols):
+    """
+    Auto-picks the best column to join on when the user doesn't specify
+    one: prefers a column whose name looks like an identifier ('case
+    number', 'id', 'code', ...); falls back to whichever shared column
+    has the most unique values in df_a, since a true key column is
+    usually close to one-value-per-row.
+    """
+    id_like = [c for c in common_cols if any(kw in c.lower() for kw in ID_LIKE_KEYWORDS)]
+    candidates = id_like if id_like else common_cols
+    return max(candidates, key=lambda c: df_a[c].nunique())
+
+
+@app.post("/api/merge")
+async def merge_files(
+    file_a: UploadFile = File(...),
+    file_b: UploadFile = File(...),
+    mode: str = Form("concat"),
+    join_column: Optional[str] = Form(None),
+):
+    """
+    Combines two datasets in one of two ways:
+
+    mode="concat" (default) — stacks file B's rows underneath file A's
+    rows to make one bigger dataset. Columns are matched by name; a
+    column only present in one file gets left blank for the other
+    file's rows rather than dropping the column.
+
+    mode="join" — a relational join: keeps only rows where the values
+    in `join_column` (or an auto-picked column, if not given) match
+    between the two files, and combines the rest of each row's columns
+    side by side. Use this when the two files describe the SAME records
+    but hold different information about them (e.g. ticket details in
+    one file, resolution outcomes in another, linked by a ticket ID).
+    """
+    content_a = await file_a.read()
+    content_b = await file_b.read()
+
+    df_a = read_uploaded_file(file_a.filename, content_a)
+    df_b = read_uploaded_file(file_b.filename, content_b)
+
+    common_cols = [c for c in df_a.columns if c in df_b.columns]
+
+    if mode == "join":
+        if not common_cols:
+            raise HTTPException(
+                400,
+                "These two files don't share any column names, so there's nothing to join "
+                "on. Make sure both files have a shared key column (e.g. 'ID', 'Case Number') "
+                "with the exact same name, then try again.",
+            )
+
+        col = join_column if join_column in common_cols else pick_join_column(df_a, df_b, common_cols)
+
+        try:
+            combined = pd.merge(df_a, df_b, on=col, how="inner", suffixes=("_a", "_b"))
+        except Exception as e:
+            raise HTTPException(400, f"Could not join these files: {e}")
+
+        if combined.shape[0] == 0:
+            raise HTTPException(
+                400,
+                f"Tried joining on '{col}' but got zero matching rows. The values in "
+                f"'{col}' don't actually overlap between the two files — double check "
+                "both files really describe the same records.",
+            )
+
+        suffix = "joined"
+
+    else:  # mode == "concat"
+        if not common_cols:
+            raise HTTPException(
+                400,
+                "These two files don't share any column names at all, so stacking them "
+                "wouldn't produce a sensible combined dataset. Make sure both files use "
+                "the same column headers.",
+            )
+
+        combined = pd.concat([df_a, df_b], ignore_index=True, sort=False)
+        suffix = "combined"
+
+    buf = io.StringIO()
+    combined.to_csv(buf, index=False)
+    buf.seek(0)
+
+    name_a = file_a.filename.rsplit(".", 1)[0]
+    name_b = file_b.filename.rsplit(".", 1)[0]
+    merged_filename = f"{name_a}_{name_b}_{suffix}.csv"
+
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{merged_filename}"'},
+    )
 
 
 @app.get("/api/sessions/{session_id}/columns")

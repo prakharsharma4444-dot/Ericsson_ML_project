@@ -18,7 +18,26 @@ export async function getColumns(file) {
       : []
   };
 }
+export async function mergeDatasets(fileA, fileB, mode = 'concat') {
+  const formData = new FormData();
+  formData.append('file_a', fileA);
+  formData.append('file_b', fileB);
+  formData.append('mode', mode); // 'concat' (stack rows) or 'join' (relational join)
 
+  const res = await fetch(`${getApiBase()}/api/merge`, { method: 'POST', body: formData });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Merge failed (${res.status}): ${text}`);
+  }
+
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const suggestedName = match ? match[1] : 'combined_dataset.csv';
+
+  const file = new File([blob], suggestedName, { type: 'text/csv' });
+  return { file, name: suggestedName };
+}
 export async function trainModel(sessionId, targetCol, task = null) {
   const settings = JSON.parse(localStorage.getItem('app_settings') || '{}');
   const testSplitRatio = settings.testSplit ? settings.testSplit / 100 : undefined;
