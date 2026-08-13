@@ -13,6 +13,7 @@ An end-to-end Machine Learning and Analytics platform designed to parse raw Eric
   - **Urgent Action Tracker:** Directly highlights cases requiring immediate attention or nearing SLA breach targets.
 
 - **Data Exploration & Processing**
+  - Accepts **CSV (`.csv`) and Excel (`.xlsx`, `.xls`) uploads** — the same schema, health checks, and downstream pipeline run regardless of format.
   - Automatic column normalization and schema bridging (handles multi-word statuses like "In Progress" and maps 4-level priorities into standardized metrics).
   - Robust date parsing and dataset health summary before running ML pipelines.
 
@@ -36,6 +37,7 @@ An end-to-end Machine Learning and Analytics platform designed to parse raw Eric
 - **API Framework:** FastAPI
 - **Server:** Uvicorn
 - **Data & ML:** Pandas, NumPy, Scikit-Learn
+- **File I/O:** `openpyxl` (`.xlsx` read support), `xlrd` (legacy `.xls` read support)
 
 ---
 
@@ -128,7 +130,7 @@ This uses `concurrently` to run both servers in one terminal — backend on `htt
 ## 📖 How to Use
 
 1. **Dashboard:** View real-time SLA metrics, weekly ticket volume trends, and urgent action items.
-2. **Upload Data:** Upload raw Ericsson support CSV files to inspect schema, data health, and missing values.
+2. **Upload Data:** Upload raw Ericsson support files (`.csv`, `.xlsx`, or `.xls`) to inspect schema, data health, and missing values.
 3. **Train Models:** Select a prediction task (*Priority*, *Resolution Time*, or *Worker Assignment*) to automatically train and evaluate Machine Learning models.
 4. **Run Predictions:** Use the interactive prediction tool to estimate parameters for new incoming tickets.
 
