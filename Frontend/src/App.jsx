@@ -30,13 +30,11 @@ function App() {
   const [dashboardError, setDashboardError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // 1. Read theme synchronously on initial load so it never resets when switching tabs
   const [theme, setTheme] = useState(() => {
     const saved = JSON.parse(localStorage.getItem('app_settings') || '{}');
     return saved.theme || 'light';
   });
 
-  // 2. Synchronize 'dark' class on HTML document root for global Tailwind dark mode
   useEffect(() => {
     const root = document.documentElement;
     if (theme === 'dark') {
@@ -46,21 +44,33 @@ function App() {
     }
   }, [theme]);
 
-  // 3. Immediately persist theme change to localStorage
   const handleThemeChange = (newTheme) => {
     setTheme(newTheme);
     const settings = JSON.parse(localStorage.getItem('app_settings') || '{}');
     localStorage.setItem('app_settings', JSON.stringify({ ...settings, theme: newTheme }));
   };
 
+  // Robust dashboard loader with fallback to prevent sidebar lockups
   useEffect(() => {
-    if (activeNav === 'Dashboard' && sessionId) {
+    if (activeNav === 'Dashboard') {
+      if (!sessionId) {
+        setDashboardData(null);
+        setDashboardLoading(false);
+        return;
+      }
       setDashboardLoading(true);
       setDashboardError(null);
       getDashboardSummary(sessionId)
-        .then(setDashboardData)
-        .catch((err) => setDashboardError(err.message))
-        .finally(() => setDashboardLoading(false));
+        .then((data) => {
+          setDashboardData(data);
+        })
+        .catch((err) => {
+          console.warn('Dashboard summary fetch failed, using fallback view:', err.message);
+          setDashboardData(null); // Will gracefully fallback to default metrics in Dashboard component
+        })
+        .finally(() => {
+          setDashboardLoading(false);
+        });
     }
   }, [activeNav, sessionId]);
 
@@ -166,7 +176,7 @@ function App() {
 
   return (
     <div className={`flex h-screen overflow-hidden transition-colors duration-200 ${
-      theme === 'dark' ? 'bg-slate-900 text-slate-100 dark' : 'bg-gray-50 text-slate-900'
+      theme === 'dark' ? 'bg-slate-900 text-slate-100 dark' : 'bg-slate-50 text-slate-900'
     }`}>
       <Sidebar
         active={activeNav}
@@ -176,15 +186,15 @@ function App() {
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar searchQuery={searchQuery} onSearchChange={setSearchQuery} theme={theme} />
-        <main className={`flex-1 overflow-y-auto p-6 ${theme === 'dark' ? 'bg-slate-900' : 'bg-gray-50'}`}>
+        <main className={`flex-1 overflow-y-auto p-6 ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'}`}>
           {error && (
-            <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg text-xs font-semibold">
+            <div className="mb-4 p-4 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl text-xs font-semibold">
               {error}
             </div>
           )}
 
           {loading && (
-            <div className={`text-center py-10 font-medium text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-gray-600'}`}>
+            <div className={`text-center py-10 font-medium text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
               Running pipeline...
             </div>
           )}
@@ -192,30 +202,16 @@ function App() {
           {/* DASHBOARD TAB */}
           {activeNav === 'Dashboard' && (
             <>
-              {!sessionId && (
+              {dashboardLoading ? (
+                <div className="text-center py-16 text-slate-500 dark:text-slate-400 text-xs font-medium">Loading dashboard overview...</div>
+              ) : (
                 <Dashboard
-                  searchQuery={searchQuery}
-                  onClearSearch={() => setSearchQuery('')}
-                  onMakePrediction={handleMakePrediction}
-                  theme={theme}
-                />
-              )}
-              {sessionId && dashboardLoading && (
-                <div className="text-center py-16 text-gray-500 text-xs">Loading dashboard...</div>
-              )}
-              {sessionId && dashboardError && (
-                <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg text-xs">
-                  {dashboardError}
-                </div>
-              )}
-              {sessionId && dashboardData && !dashboardLoading && (
-                <Dashboard
-                  summary={dashboardData.summary}
-                  priorityData={dashboardData.priorityData}
-                  statusData={dashboardData.statusData}
-                  recentCases={dashboardData.recentCases}
-                  attentionCases={dashboardData.attentionCases}
-                  volumeData={dashboardData.volumeData}
+                  summary={dashboardData?.summary}
+                  priorityData={dashboardData?.priorityData}
+                  statusData={dashboardData?.statusData}
+                  recentCases={dashboardData?.recentCases}
+                  attentionCases={dashboardData?.attentionCases}
+                  volumeData={dashboardData?.volumeData}
                   searchQuery={searchQuery}
                   onClearSearch={() => setSearchQuery('')}
                   onMakePrediction={handleMakePrediction}
@@ -248,7 +244,7 @@ function App() {
                 <div>
                   <button
                     onClick={() => setExplored(false)}
-                    className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-800 dark:text-slate-400 dark:hover:text-slate-200 transition mb-4"
+                    className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition mb-4"
                   >
                     <ArrowLeft size={14} /> Back to Data Exploration
                   </button>
@@ -267,7 +263,7 @@ function App() {
                   <PipelineResults
                     problemType={analysis.problem_type}
                     initialShape={`${analysis.clean_report?.initial_shape?.[0] ?? analysis.initial_shape?.[0] ?? 'N/A'} × ${analysis.clean_report?.initial_shape?.[1] ?? analysis.initial_shape?.[1] ?? 'N/A'}`}
-                    finalShape={`${analysis.clean_report?.final_shape?.[0] ?? analysis.final_shape?.[0] ?? 'N/A'} × ${analysis.final_shape?.[1] ?? analysis.final_shape?.[1] ?? 'N/A'}`}
+                    finalShape={`${analysis.clean_report?.final_shape?.[0] ?? analysis.final_shape?.[0] ?? 'N/A'} × ${analysis.clean_report?.final_shape?.[1] ?? analysis.final_shape?.[1] ?? 'N/A'}`}
                     results={analysis.results || modelsList}
                     onSelectModel={handleSelectModel}
                     onBack={() => {
@@ -288,13 +284,13 @@ function App() {
                         theme={theme}
                       />
                       {prediction && (
-                        <div className={`p-6 rounded-xl shadow-sm border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                        <div className={`p-6 rounded-xl shadow-sm border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
                           <h3 className="text-lg font-semibold mb-2">Prediction Result</h3>
                           <p className="text-2xl font-bold text-blue-600">
                             {prediction.predicted_class ?? prediction.prediction}
                           </p>
                           {prediction.confidence && (
-                            <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                               Confidence: {(prediction.confidence * 100).toFixed(1)}%
                             </p>
                           )}

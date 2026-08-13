@@ -18,7 +18,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import StatCard from './StatCard';
 
-const PRIORITY_COLORS = { Overdue: '#DC2626', Pending: '#2563EB', Closed: '#16A34A', Open: '#0B2D5B' };
+const PRIORITY_COLORS = { Overdue: '#DC2626', Pending: '#2563EB', Closed: '#16A34A', Open: '#3B82F6' };
 
 const defaultSummary = {
   openCases: 142, openCasesTrend: -12,
@@ -89,7 +89,6 @@ function Dashboard({
   const safeRecent = Array.isArray(recentCases) && recentCases.length > 0 ? recentCases : defaultRecent;
   const safeAttention = Array.isArray(attentionCases) && attentionCases.length > 0 ? attentionCases : defaultAttention;
 
-  // Search Filter Helper
   const matchesSearch = (item, q) => {
     if (!q || !q.trim()) return true;
     const term = q.toLowerCase().trim();
@@ -124,7 +123,6 @@ function Dashboard({
         </button>
       </div>
 
-      {/* ACTIVE SEARCH FILTER BAR */}
       {searchQuery && (
         <div className="flex items-center justify-between bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/60 rounded-xl px-4 py-2.5 text-xs text-blue-900 dark:text-blue-200">
           <div className="flex items-center gap-2">
@@ -197,7 +195,6 @@ function Dashboard({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* RECENT ACTIVITY TABLE */}
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Recent Activity (n-1 Date)</h3>
@@ -239,7 +236,6 @@ function Dashboard({
           )}
         </div>
 
-        {/* NEEDS ATTENTION SECTION */}
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -290,7 +286,6 @@ function Dashboard({
         </button>
       </div>
 
-      {/* RAW DATA POPUP MODAL */}
       {selectedCaseModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 dark:bg-slate-950/80 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] overflow-hidden border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in duration-150">

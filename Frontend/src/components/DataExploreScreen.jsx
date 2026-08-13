@@ -6,9 +6,35 @@ import { AlertTriangle, ShieldCheck, Hash, Type, X, Search, Download, ArrowLeft 
 import { getPreview, compareColumns, getColumnDetail, getReportUrl } from "../api";
 import PivotBuilder from "./PivotBuilder";
 
-export default function DataExploreScreen({ sessionId, columns, onContinue, onBack }) {
+// Custom dark-mode-aware Recharts Tooltip
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-2.5 rounded-lg shadow-lg text-xs text-gray-800 dark:text-slate-100">
+        {label && <p className="font-semibold mb-1 text-gray-900 dark:text-white">{String(label)}</p>}
+        {payload.map((entry, index) => (
+          <p key={index} style={{ color: entry.color || entry.fill }}>
+            <span className="font-medium">{entry.name || entry.dataKey}: </span>
+            {typeof entry.value === 'number' ? entry.value.toLocaleString() : String(entry.value)}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
+
+export default function DataExploreScreen({ sessionId, columns = [], onContinue, onBack }) {
   const [preview, setPreview] = useState(null);
-  const colNames = columns.map(c => (typeof c === 'object' ? c.name : c));
+
+  const colNames = Array.isArray(columns)
+    ? columns.map(c => {
+        if (typeof c === 'string') return c;
+        if (typeof c === 'object' && c !== null) return c.name || c.column || c.label || String(c);
+        return String(c);
+      })
+    : [];
+
   const [col1, setCol1] = useState(colNames[0] || '');
   const [col2, setCol2] = useState(colNames[1] || colNames[0] || '');
   const [comparison, setComparison] = useState(null);
@@ -16,15 +42,11 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('profiling');
 
-  // Table Search State
   const [searchTerm, setSearchTerm] = useState('');
-
-  // Column Inspector Modal State
   const [selectedCol, setSelectedCol] = useState(null);
   const [colDetail, setColDetail] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
-  // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 15;
 
@@ -33,6 +55,13 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
       .then(setPreview)
       .catch(err => setError(err.message));
   }, [sessionId]);
+
+  useEffect(() => {
+    if (colNames.length > 0) {
+      if (!col1 || !colNames.includes(col1)) setCol1(colNames[0]);
+      if (!col2 || !colNames.includes(col2)) setCol2(colNames[1] || colNames[0]);
+    }
+  }, [columns]);
 
   const handleInspectColumn = async (colName) => {
     setSelectedCol(colName);
@@ -71,11 +100,10 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
     downloadAnchor.remove();
   };
 
-  // Filtered raw table rows
   const rawRows = preview?.preview || [];
   const filteredRows = rawRows.filter(row =>
     Object.values(row).some(val =>
-      String(val).toLowerCase().includes(searchTerm.toLowerCase())
+      String(val ?? '').toLowerCase().includes(searchTerm.toLowerCase())
     )
   );
 
@@ -85,8 +113,8 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
   const displayedRows = filteredRows.slice(startIndex, startIndex + rowsPerPage);
 
   return (
-    <div className="p-6 space-y-6 max-w-6xl mx-auto">
-      {/* Top Header with Back Button and Quick Actions */}
+    <div className="p-6 space-y-6 max-w-6xl mx-auto text-slate-900 dark:text-slate-100 transition-colors duration-200">
+      {/* Top Header */}
       <div>
         {onBack && (
           <button
@@ -99,7 +127,7 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
 
         <div className="flex flex-wrap justify-between items-center gap-4">
           <div>
-            <h2 className="text-xl font-bold text-gray-800 dark:text-slate-100">Dataset Profiling & Exploration</h2>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-slate-100">Dataset Profiling & Exploration</h2>
             <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Deep inspection of structure, column health, and distributions</p>
           </div>
           
@@ -124,7 +152,7 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
         </div>
       </div>
 
-      {error && <div className="p-3 bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 rounded-lg text-sm">{error}</div>}
+      {error && <div className="p-3 bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900 rounded-lg text-sm">{error}</div>}
 
       {preview && (
         <>
@@ -138,33 +166,33 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
 
           {/* Quality Warnings Banner */}
           {preview.alerts && preview.alerts.length > 0 ? (
-            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl p-5 shadow-sm">
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-5 shadow-sm">
               <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-semibold text-sm mb-3">
                 <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400" />
                 Data Quality Warnings & Diagnostics ({preview.alerts.length})
               </div>
               <ul className="space-y-1.5 text-xs text-amber-900 dark:text-amber-200 list-disc pl-5">
                 {preview.alerts.map((alert, idx) => (
-                  <li key={idx}>{alert}</li>
+                  <li key={idx}>{String(alert)}</li>
                 ))}
               </ul>
             </div>
           ) : (
-            <div className="bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800/60 rounded-xl p-4 shadow-sm flex items-center gap-3 text-green-800 dark:text-green-300 text-xs font-medium">
+            <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/50 rounded-xl p-4 shadow-sm flex items-center gap-3 text-green-800 dark:text-green-300 text-xs font-medium">
               <ShieldCheck size={20} className="text-green-600 dark:text-green-400" />
               Dataset passed initial health checks. Minimal missingness and balanced variance detected.
             </div>
           )}
 
           {/* Tabbed Section */}
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
-            <div className="flex border-b border-gray-100 dark:border-slate-800 mb-4 pb-2 gap-4 justify-between items-center flex-wrap">
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm p-5 transition-colors duration-200">
+            <div className="flex border-b border-gray-200 dark:border-slate-800 mb-4 pb-2 gap-4 justify-between items-center flex-wrap">
               <div className="flex gap-4">
                 <button
                   onClick={() => setActiveTab('profiling')}
                   className={`text-sm font-semibold pb-2 border-b-2 transition-all ${
                     activeTab === 'profiling' 
-                      ? 'border-blue-600 text-blue-600 dark:text-blue-400' 
+                      ? 'border-blue-600 dark:border-blue-500 text-blue-600 dark:text-blue-400' 
                       : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
                   }`}
                 >
@@ -174,7 +202,7 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
                   onClick={() => setActiveTab('preview')}
                   className={`text-sm font-semibold pb-2 border-b-2 transition-all ${
                     activeTab === 'preview' 
-                      ? 'border-blue-600 text-blue-600 dark:text-blue-400' 
+                      ? 'border-blue-600 dark:border-blue-500 text-blue-600 dark:text-blue-400' 
                       : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
                   }`}
                 >
@@ -182,7 +210,6 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
                 </button>
               </div>
 
-              {/* Raw Table Filter Search Bar */}
               {activeTab === 'preview' && (
                 <div className="relative">
                   <Search size={14} className="absolute left-2.5 top-2.5 text-gray-400 dark:text-slate-500" />
@@ -194,7 +221,7 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
                       setSearchTerm(e.target.value);
                       setCurrentPage(1);
                     }}
-                    className="pl-8 pr-3 py-1.5 text-xs border border-gray-200 dark:border-slate-700 rounded-lg bg-gray-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 w-48"
+                    className="pl-8 pr-3 py-1.5 text-xs border border-gray-200 dark:border-slate-700 rounded-lg bg-gray-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 w-48 transition-colors"
                   />
                 </div>
               )}
@@ -220,9 +247,9 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
                       <tr 
                         key={idx} 
                         onClick={() => handleInspectColumn(col.name)}
-                        className="hover:bg-blue-50/50 dark:hover:bg-blue-950/30 cursor-pointer transition-colors group"
+                        className="hover:bg-blue-50/50 dark:hover:bg-slate-800/60 cursor-pointer transition-colors group"
                       >
-                        <td className="p-2.5 font-semibold text-gray-800 dark:text-slate-200 flex items-center gap-1.5">
+                        <td className="p-2.5 font-semibold text-gray-800 dark:text-slate-200">
                           {col.name}
                         </td>
                         <td className="p-2.5">
@@ -273,7 +300,7 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
                     <thead>
                       <tr>
                         {preview.preview[0] && Object.keys(preview.preview[0]).map(col => (
-                          <th key={col} className="text-left p-2 border-b border-gray-200 dark:border-slate-800 font-semibold text-gray-600 dark:text-slate-300 whitespace-nowrap">{col}</th>
+                          <th key={col} className="text-left p-2 border-b border-gray-200 dark:border-slate-800 font-semibold text-gray-700 dark:text-slate-300 whitespace-nowrap">{col}</th>
                         ))}
                       </tr>
                     </thead>
@@ -282,7 +309,9 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
                         displayedRows.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors">
                             {Object.values(row).map((val, j) => (
-                              <td key={j} className="p-2 border-b border-gray-100 dark:border-slate-800 text-gray-600 dark:text-slate-300 whitespace-nowrap">{String(val)}</td>
+                              <td key={j} className="p-2 border-b border-gray-100 dark:border-slate-800 text-gray-600 dark:text-slate-300 whitespace-nowrap">
+                                {typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val ?? '')}
+                              </td>
                             ))}
                           </tr>
                         ))
@@ -307,7 +336,7 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
                         <button 
                           onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                           disabled={currentPage === 1}
-                          className="px-3 py-1.5 text-xs font-medium border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-200 rounded-lg disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-slate-800"
+                          className="px-3 py-1.5 text-xs font-medium border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-200 rounded-lg disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-slate-800 transition"
                         >
                           Previous
                         </button>
@@ -317,7 +346,7 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
                         <button 
                           onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                           disabled={currentPage === totalPages}
-                          className="px-3 py-1.5 text-xs font-medium border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-200 rounded-lg disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-slate-800"
+                          className="px-3 py-1.5 text-xs font-medium border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-200 rounded-lg disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-slate-800 transition"
                         >
                           Next
                         </button>
@@ -329,7 +358,6 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
             )}
           </div>
 
-          {/* Pivot Builder Component */}
           <PivotBuilder
             sessionId={sessionId}
             columnStats={preview.column_stats}
@@ -337,18 +365,30 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
         </>
       )}
 
-      {/* Column Pairwise Visual Comparison Section */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-200 mb-1">Pairwise Relationship Visualizer</h3>
+      {/* Visual Comparison Section */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm p-5 transition-colors duration-200">
+        <h3 className="text-sm font-semibold text-gray-800 dark:text-slate-200 mb-1">Pairwise Relationship Visualizer</h3>
         <p className="text-xs text-gray-500 dark:text-slate-400 mb-4">Select any two columns to plot interactions and scatter spreads</p>
 
         <div className="flex flex-wrap gap-3 items-center mb-6">
-          <select value={col1} onChange={e => setCol1(e.target.value)} className="border border-gray-200 dark:border-slate-700 rounded-lg p-2 text-xs bg-gray-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:outline-none">
-            {colNames.map(c => <option key={c} value={c}>{c}</option>)}
+          <select 
+            value={col1} 
+            onChange={e => setCol1(e.target.value)} 
+            className="border border-gray-200 dark:border-slate-700 rounded-lg p-2 text-xs bg-gray-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            {colNames.map(c => (
+              <option key={c} value={c} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">{c}</option>
+            ))}
           </select>
           <span className="text-gray-400 dark:text-slate-500 font-medium text-xs">vs</span>
-          <select value={col2} onChange={e => setCol2(e.target.value)} className="border border-gray-200 dark:border-slate-700 rounded-lg p-2 text-xs bg-gray-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:outline-none">
-            {colNames.map(c => <option key={c} value={c}>{c}</option>)}
+          <select 
+            value={col2} 
+            onChange={e => setCol2(e.target.value)} 
+            className="border border-gray-200 dark:border-slate-700 rounded-lg p-2 text-xs bg-gray-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            {colNames.map(c => (
+              <option key={c} value={c} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">{c}</option>
+            ))}
           </select>
           <button onClick={handleCompare} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-medium transition-colors hover:bg-blue-700 shadow-sm">
             {loading ? 'Plotting...' : 'Plot Comparison'}
@@ -359,17 +399,17 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
           <div>
             {comparison.correlation !== undefined && (
               <p className="text-xs font-medium text-gray-600 dark:text-slate-400 mb-3">
-                Pearson Correlation ($r$): <span className="text-blue-600 dark:text-blue-400 font-bold">{comparison.correlation?.toFixed(3)}</span>
+                Pearson Correlation (r): <span className="text-blue-600 dark:text-blue-400 font-bold">{comparison.correlation?.toFixed(3)}</span>
               </p>
             )}
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <ScatterChart margin={{ top: 10, right: 30, left: 0, bottom: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#94A3B8" strokeOpacity={0.2} />
-                  <XAxis dataKey={comparison.col1} name={comparison.col1} tick={{ fontSize: 11, fill: '#94A3B8' }} />
-                  <YAxis dataKey={comparison.col2} name={comparison.col2} tick={{ fontSize: 11, fill: '#94A3B8' }} />
-                  <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Scatter data={comparison.data} fill="#3b82f6" fillOpacity={0.6} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-gray-200 dark:text-slate-800" />
+                  <XAxis dataKey={comparison.col1} name={comparison.col1} tick={{ fontSize: 11, fill: 'currentColor' }} className="text-gray-500 dark:text-slate-400" />
+                  <YAxis dataKey={comparison.col2} name={comparison.col2} tick={{ fontSize: 11, fill: 'currentColor' }} className="text-gray-500 dark:text-slate-400" />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Scatter data={comparison.data} fill="#3b82f6" fillOpacity={0.7} />
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
@@ -382,13 +422,13 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={comparison.data} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#94A3B8" strokeOpacity={0.2} />
-                  <XAxis dataKey={Object.keys(comparison.data[0] || {})[0]} tick={{ fontSize: 11, fill: '#94A3B8' }} />
-                  <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} />
-                  <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-gray-200 dark:text-slate-800" />
+                  <XAxis dataKey={Object.keys(comparison.data[0] || {})[0]} tick={{ fontSize: 11, fill: 'currentColor' }} className="text-gray-500 dark:text-slate-400" />
+                  <YAxis tick={{ fontSize: 11, fill: 'currentColor' }} className="text-gray-500 dark:text-slate-400" />
+                  <Tooltip content={<CustomTooltip />} />
                   <Bar 
                     dataKey={Object.keys(comparison.data[0] || {}).find(k => k !== Object.keys(comparison.data[0] || {})[0]) || 'mean'} 
-                    fill="#2563eb" 
+                    fill="#3b82f6" 
                     radius={[4, 4, 0, 0]} 
                   />
                 </BarChart>
@@ -402,7 +442,7 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
         )}
       </div>
 
-      {/* Navigation Footer with Back and Continue Buttons */}
+      {/* Navigation Footer */}
       <div className="flex items-center justify-between pt-4">
         {onBack ? (
           <button
@@ -422,10 +462,10 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
         </button>
       </div>
 
-      {/* SINGLE COLUMN INSPECTOR MODAL */}
+      {/* Inspector Modal */}
       {selectedCol && (
-        <div className="fixed inset-0 bg-black/40 dark:bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative border dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative border border-gray-200 dark:border-slate-800">
             <button 
               onClick={() => setSelectedCol(null)}
               className="absolute top-4 right-4 p-1.5 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
@@ -434,7 +474,7 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
             </button>
 
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-lg font-bold text-gray-800 dark:text-slate-100">Column Inspector: {selectedCol}</h3>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100">Column Inspector: {selectedCol}</h3>
             </div>
             <p className="text-xs text-gray-500 dark:text-slate-400 mb-5">Full dataset distribution analysis</p>
 
@@ -443,7 +483,7 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
             ) : colDetail ? (
               <div className="space-y-5">
                 {colDetail.type === 'Numeric' && (
-                  <div className="grid grid-cols-3 gap-3 bg-gray-50 dark:bg-slate-800/50 p-3 rounded-xl border border-gray-100 dark:border-slate-800 text-center">
+                  <div className="grid grid-cols-3 gap-3 bg-gray-50 dark:bg-slate-800/60 p-3 rounded-xl border border-gray-100 dark:border-slate-800 text-center">
                     <div>
                       <p className="text-[11px] text-gray-500 dark:text-slate-400 font-medium">Skewness</p>
                       <p className="text-sm font-bold text-gray-800 dark:text-slate-100">{colDetail.skewness}</p>
@@ -466,10 +506,10 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
                   <div className="h-60 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={colDetail.distribution} margin={{ top: 10, right: 20, left: 0, bottom: 25 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#94A3B8" strokeOpacity={0.2} />
-                        <XAxis dataKey="bin" tick={{ fontSize: 10, fill: '#94A3B8' }} interval={0} angle={-20} textAnchor="end" />
-                        <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} />
-                        <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-gray-200 dark:text-slate-800" />
+                        <XAxis dataKey="bin" tick={{ fontSize: 10, fill: 'currentColor' }} className="text-gray-500 dark:text-slate-400" interval={0} angle={-20} textAnchor="end" />
+                        <YAxis tick={{ fontSize: 10, fill: 'currentColor' }} className="text-gray-500 dark:text-slate-400" />
+                        <Tooltip content={<CustomTooltip />} />
                         <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
@@ -487,10 +527,11 @@ export default function DataExploreScreen({ sessionId, columns, onContinue, onBa
 }
 
 function StatBox({ label, value }) {
+  const displayVal = typeof value === 'object' && value !== null ? JSON.stringify(value) : (value ?? 'N/A');
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm p-4 flex flex-col justify-center transition-colors">
+    <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm p-4 flex flex-col justify-center transition-colors duration-200">
       <p className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">{label}</p>
-      <p className="text-xl font-bold text-gray-800 dark:text-slate-100">{value ?? 'N/A'}</p>
+      <p className="text-xl font-bold text-gray-900 dark:text-slate-100">{displayVal}</p>
     </div>
   );
 }
@@ -509,16 +550,13 @@ function CrosstabTable({ data, col1, col2 }) {
   if (totalCells > 200) {
     return (
       <div className="text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-lg p-4">
-        Too many unique category combinations to display
-        ({col1Values.length} × {col2Values.length} = {totalCells} cells). This usually means
-        one of the selected columns (like an ID column) has too many unique values.
-        Try picking two columns with fewer distinct categories.
+        Too many unique category combinations to display ({col1Values.length} × {col2Values.length} = {totalCells} cells).
       </div>
     );
   }
 
   const chartData = col1Values.map((v1) => {
-    const row = { name: v1 };
+    const row = { name: String(v1) };
     col2Values.forEach((v2) => {
       row[v2] = data[v2]?.[v1] ?? 0;
     });
@@ -528,15 +566,15 @@ function CrosstabTable({ data, col1, col2 }) {
   return (
     <div>
       <p className="text-xs text-gray-500 dark:text-slate-400 mb-3 font-medium">
-        {col1} by {col2}
+        {String(col1)} by {String(col2)}
       </p>
       <div className="h-72 w-full mb-6">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 40 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#94A3B8" strokeOpacity={0.2} />
-            <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94A3B8' }} interval={0} angle={-25} textAnchor="end" />
-            <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} />
-            <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-gray-200 dark:text-slate-800" />
+            <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'currentColor' }} className="text-gray-500 dark:text-slate-400" interval={0} angle={-25} textAnchor="end" />
+            <YAxis tick={{ fontSize: 11, fill: 'currentColor' }} className="text-gray-500 dark:text-slate-400" />
+            <Tooltip content={<CustomTooltip />} />
             {col2Values.map((v2, i) => (
               <Bar key={v2} dataKey={v2} stackId="a" fill={CROSSTAB_COLORS[i % CROSSTAB_COLORS.length]} />
             ))}
@@ -548,12 +586,12 @@ function CrosstabTable({ data, col1, col2 }) {
         <table className="text-xs w-full border-collapse">
           <thead>
             <tr>
-              <th className="p-2 border-b border-gray-200 dark:border-slate-800 text-left font-semibold text-gray-600 dark:text-slate-300 bg-gray-50 dark:bg-slate-800">
-                {col1} \ {col2}
+              <th className="p-2 border-b border-gray-200 dark:border-slate-800 text-left font-semibold text-gray-700 dark:text-slate-300 bg-gray-50 dark:bg-slate-800">
+                {String(col1)} \ {String(col2)}
               </th>
               {col2Values.map((v2) => (
-                <th key={v2} className="p-2 border-b border-gray-200 dark:border-slate-800 text-right font-semibold text-gray-600 dark:text-slate-300 bg-gray-50 dark:bg-slate-800">
-                  {v2}
+                <th key={v2} className="p-2 border-b border-gray-200 dark:border-slate-800 text-right font-semibold text-gray-700 dark:text-slate-300 bg-gray-50 dark:bg-slate-800">
+                  {String(v2)}
                 </th>
               ))}
             </tr>
@@ -561,7 +599,7 @@ function CrosstabTable({ data, col1, col2 }) {
           <tbody>
             {col1Values.map((v1) => (
               <tr key={v1} className="hover:bg-gray-50 dark:hover:bg-slate-800/50">
-                <td className="p-2 border-b border-gray-100 dark:border-slate-800 font-medium text-gray-700 dark:text-slate-300 whitespace-nowrap">{v1}</td>
+                <td className="p-2 border-b border-gray-100 dark:border-slate-800 font-medium text-gray-700 dark:text-slate-300 whitespace-nowrap">{String(v1)}</td>
                 {col2Values.map((v2) => (
                   <td key={v2} className="p-2 border-b border-gray-100 dark:border-slate-800 text-right text-gray-600 dark:text-slate-400">
                     {data[v2]?.[v1] ?? 0}
