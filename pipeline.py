@@ -10,8 +10,9 @@ automatically based on what's detected in the data.
 import numpy as np
 import pandas as pd
 import joblib
-
-from sklearn.model_selection import train_test_split
+from sklearn.feature_selection import mutual_info_regression
+from sklearn.model_selection import train_test_split, cross_val_score, KFold
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, RobustScaler, StandardScaler
 from sklearn.linear_model import LogisticRegression, Ridge, HuberRegressor
 from sklearn.ensemble import (
@@ -173,6 +174,8 @@ def encode_target(df, target_col):
 def clean_data(df, target_col=None):
     """
     Removes duplicate rows, fully-empty columns, missing target rows, and obvious ID columns.
+    Imputes missing values in numeric feature columns (median) so downstream
+    models (e.g. Ridge, SVR) that can't natively handle NaNs don't error out.
     Returns (df, report) summarizing operations.
     """
     report = {"initial_shape": df.shape, "actions_taken": []}
@@ -198,6 +201,23 @@ def clean_data(df, target_col=None):
         df = df.drop(columns=id_cols)
         report["actions_taken"].append(f"Dropped ID columns: {id_cols}")
 
+    # --- Impute missing values in numeric feature columns ---
+    # Models like Ridge and SVR can't handle NaNs natively, so any numeric
+    # feature nulls need to be filled before training. Median is used since
+    # it's robust to outliers (consistent with the outlier-aware scaler choice below).
+    feature_cols = [c for c in df.columns if c != target_col]
+    numeric_feature_cols = df[feature_cols].select_dtypes(include=["int64", "float64"]).columns.tolist()
+    numeric_nulls = df[numeric_feature_cols].isnull().sum()
+    cols_with_nulls = numeric_nulls[numeric_nulls > 0]
+
+    if len(cols_with_nulls) > 0:
+        for col in cols_with_nulls.index:
+            median_val = df[col].median()
+            df[col] = df[col].fillna(median_val)
+        report["actions_taken"].append(
+            f"Imputed missing values with median for: {cols_with_nulls.to_dict()}"
+        )
+
     report["final_shape"] = df.shape
     return df, report
 
@@ -214,6 +234,94 @@ def encode_categoricals(df, target_col):
         print("No categorical features to encode.")
 
     return df
+
+
+# ---------------------------------------------------------------------------
+# 3b. Generalized feature engineering + selection (Stage 1)
+# ---------------------------------------------------------------------------
+
+def add_standard_transforms(df, target_col):
+    """
+    Adds sqrt and log1p versions of every non-negative numeric feature.
+    Lets downstream feature selection decide whether the raw, sqrt, or log
+    version of a feature carries the most signal — without needing to know
+    in advance whether a relationship is linear, sqrt-shaped, or log-shaped.
+    """
+    numeric_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
+    numeric_cols = [c for c in numeric_cols if c != target_col]
+
+    added_cols = []
+    for col in numeric_cols:
+        if (df[col] >= 0).all():
+            sqrt_col = f"{col}_sqrt"
+            log_col = f"{col}_log"
+            df[sqrt_col] = np.sqrt(df[col])
+            df[log_col] = np.log1p(df[col])
+            added_cols.extend([sqrt_col, log_col])
+
+    if added_cols:
+        print(f"Added transformed features: {added_cols}")
+
+    return df, added_cols
+
+
+def select_informative_features(df, target_col, n_permutations=10, random_state=42):
+    """
+    For each base numeric feature, compares its raw/sqrt/log variants (if
+    present) by mutual information with the target and keeps only the
+    single best-scoring version -- avoiding redundant, highly correlated
+    duplicates. Any feature (or its best variant) below a permutation-based
+    noise threshold is dropped entirely.
+    """
+    numeric_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
+    numeric_cols = [c for c in numeric_cols if c != target_col]
+
+    if len(numeric_cols) == 0:
+        return df, []
+
+    rng = np.random.RandomState(random_state)
+
+    real_mi = mutual_info_regression(df[numeric_cols], df[target_col], random_state=random_state)
+    mi_series = pd.Series(real_mi, index=numeric_cols)
+
+    # More permutations = a more stable noise threshold, less sensitive to luck.
+    noise_scores = []
+    for _ in range(n_permutations):
+        shuffled = df[numeric_cols].apply(lambda col: rng.permutation(col.values))
+        noise_scores.append(
+            mutual_info_regression(shuffled, df[target_col], random_state=random_state)
+        )
+    noise_scores = np.array(noise_scores)
+    noise_threshold = noise_scores.mean() + 0.5 * noise_scores.std()
+
+    # Group each column with its transformed siblings (e.g. age_years,
+    # age_years_sqrt, age_years_log all belong to the "age_years" family).
+    families = {}
+    for col in numeric_cols:
+        base = col
+        for suffix in ("_sqrt", "_log"):
+            if col.endswith(suffix):
+                base = col[: -len(suffix)]
+                break
+        families.setdefault(base, []).append(col)
+
+    keep_cols = []
+    dropped_cols = []
+    for base, variants in families.items():
+        best_variant = max(variants, key=lambda c: mi_series[c])
+        if mi_series[best_variant] > noise_threshold:
+            keep_cols.append(best_variant)
+            dropped_cols.extend(v for v in variants if v != best_variant)
+        else:
+            dropped_cols.extend(variants)
+
+    print(f"MI noise threshold: {noise_threshold:.5f}")
+    print(f"Keeping {len(keep_cols)} numeric features, dropping {len(dropped_cols)}: {dropped_cols}")
+
+    non_numeric_cols = [c for c in df.columns if c not in numeric_cols and c != target_col]
+    df = df[keep_cols + non_numeric_cols + [target_col]]
+
+    return df, dropped_cols
 
 
 # ---------------------------------------------------------------------------
@@ -265,7 +373,7 @@ def check_outliers(df, target_col):
 
 
 def compare_two_columns(df, col1, col2, max_scatter_points=1000):
-    """Compariative summary for two dataset columns."""
+    """Comparative summary for two dataset columns."""
     result = {"col1": col1, "col2": col2}
 
     col1_numeric = pd.api.types.is_numeric_dtype(df[col1])
@@ -355,6 +463,48 @@ def choose_scaler(outlier_summary, total_features):
         return RobustScaler()
     print("Few outliers detected -> using StandardScaler")
     return StandardScaler()
+
+
+# ---------------------------------------------------------------------------
+# 6b. Cross-validation (Stage 2)
+# ---------------------------------------------------------------------------
+
+def build_cv_pipelines(models, scaler):
+    """
+    Wraps each model together with a *fresh clone* of the given scaler type,
+    so every CV fold fits its own scaler on that fold's training data only.
+    Prevents scaling leakage across folds (fitting on data the fold hasn't
+    "seen" yet), the same class of bug as the earlier target-leakage issue.
+    """
+    from sklearn.base import clone
+    return {name: Pipeline([("scaler", clone(scaler)), ("model", model)]) for name, model in models.items()}
+
+
+def cross_validate_models(models, X, y, problem_type, was_log_transformed=False, cv_folds=5):
+    """
+    Runs k-fold cross-validation for each model, reporting mean and std R²
+    (or accuracy, for classification) across folds -- a more trustworthy
+    signal than a single train/test split, especially on smaller datasets
+    or when comparing small changes (e.g. feature selection tweaks) where
+    a single split's noise can be bigger than the effect being measured.
+
+    Note: `models` should already be wrapped via build_cv_pipelines() so
+    scaling happens per-fold, not on the whole dataset beforehand.
+    """
+    scoring = "r2" if problem_type == "regression" else "accuracy"
+    kf = KFold(n_splits=cv_folds, shuffle=True, random_state=42)
+
+    cv_results = []
+    for name, pipeline in models.items():
+        scores = cross_val_score(pipeline, X, y, cv=kf, scoring=scoring)
+        cv_results.append({
+            "model": name,
+            f"cv_{scoring}_mean": scores.mean(),
+            f"cv_{scoring}_std": scores.std(),
+        })
+        print(f"{name}: CV {scoring} = {scores.mean():.4f} (+/- {scores.std():.4f})")
+
+    return pd.DataFrame(cv_results)
 
 
 # ---------------------------------------------------------------------------
@@ -494,6 +644,23 @@ def load_model(filepath):
 def predict_single(model, scaler, sample_dict, feature_columns, was_log_transformed=False):
     """Executes single-sample inference and aligns unseen or missing feature columns."""
     sample_df = pd.DataFrame([sample_dict])
+
+    # Recreate any sqrt/log engineered columns the pipeline added during
+    # training, so the sample lands in the same feature space as the model.
+    for col in feature_columns:
+        if col in sample_df.columns:
+            continue
+        if col.endswith("_sqrt"):
+            base = col[:-len("_sqrt")]
+            if base in sample_df.columns and pd.api.types.is_numeric_dtype(sample_df[base]):
+                val = sample_df[base].iloc[0]
+                sample_df[col] = np.sqrt(val) if pd.notna(val) and val >= 0 else 0.0
+        elif col.endswith("_log"):
+            base = col[:-len("_log")]
+            if base in sample_df.columns and pd.api.types.is_numeric_dtype(sample_df[base]):
+                val = sample_df[base].iloc[0]
+                sample_df[col] = np.log1p(val) if pd.notna(val) and val >= 0 else 0.0
+
     sample_df = pd.get_dummies(sample_df)
     sample_df = sample_df.reindex(columns=feature_columns, fill_value=0)
 

@@ -24,6 +24,10 @@ from pipeline import (
     encode_target,
     clean_data,
     encode_categoricals,
+    add_standard_transforms,          
+    build_cv_pipelines,
+    cross_validate_models,
+    select_informative_features,      
     check_imbalance,
     check_outliers,
     compare_two_columns,
@@ -517,8 +521,10 @@ def train(session_id: str, req: TrainRequest):
             "numbers for some rows. This column looks too skewed to log-transform "
             "safely — you may need to clean it (remove negative/zero values) first.",
         )
+    if was_log and target_col in df.columns and target_col != target_col_final:
+         df = df.drop(columns=[target_col])
 
-    df, clean_report = clean_data(df)
+    df, clean_report = clean_data(df, target_col_final)
 
     original_feature_cols = [c for c in df.columns if c not in (target_col, target_col_final)]
     plain_feature_cols, text_derived_cols = split_text_derived_columns(original_feature_cols)
@@ -532,6 +538,9 @@ def train(session_id: str, req: TrainRequest):
     ]
 
     df = encode_categoricals(df, target_col_final)
+
+    df, added_transform_cols = add_standard_transforms(df, target_col_final)
+    df, dropped_low_signal_cols = select_informative_features(df, target_col_final)
 
     imbalance_counts = None
     label_classes = None
@@ -557,10 +566,16 @@ def train(session_id: str, req: TrainRequest):
     X_test_scaled = scaler.transform(X_test)
 
     models = get_default_models(problem_type)
+
+    # Stage 2: cross-validation, for a more trustworthy signal than a
+    # single train/test split. Uses the full X/y (not X_train/X_test) --
+    # each fold scales its own training data internally via the pipeline.
+    cv_pipelines = build_cv_pipelines(models, scaler)
+    cv_results_df = cross_validate_models(cv_pipelines, X, y, problem_type, was_log)
+
     results_df, trained_models = train_and_evaluate(
         models, X_train_scaled, y_train, X_test_scaled, y_test, problem_type, was_log
     )
-
     try:
         best_model = recommend_model(results_df, trained_models, problem_type, priority=req.priority)
     except ValueError as e:
@@ -585,6 +600,7 @@ def train(session_id: str, req: TrainRequest):
     session.scaler = scaler
     session.trained_models = trained_models
     session.results = results_df.to_dict("records")
+    session.cv_results = cv_results_df.to_dict("records")
     session.recommended_model = recommended_name
     session.top_features = top_features
     session.label_classes = label_classes
@@ -596,6 +612,7 @@ def train(session_id: str, req: TrainRequest):
         "outlier_summary": outlier_summary,
         "imbalance_counts": imbalance_counts,
         "results": session.results,
+        "cv_results": session.cv_results,
         "recommended_model": recommended_name,
         "warnings": warnings,
         "feature_columns": session.feature_columns,
