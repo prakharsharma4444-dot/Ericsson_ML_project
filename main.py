@@ -1,25 +1,15 @@
-"""
-main.py — FastAPI backend for the ML pipeline app.
-
-Wraps pipeline.py in a small set of REST endpoints so a React frontend
-can drive the whole flow: upload a CSV, pick a target column, explore
-the data, run the pipeline, compare model results, inspect feature
-importance, predict on a new sample, and download the trained model.
-
-Run with:
-    uvicorn main:app --reload --port 8000
-"""
-
+# main.py — FastAPI backend[cite: 6]
 import io
 import tempfile
 from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Query
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-
+from typing import List, Optional
+from dashboard_stats import filter_support_tickets
 from pydantic import BaseModel
 
 from jsonsafe import to_jsonable
@@ -50,7 +40,6 @@ from pipeline import (
 app = FastAPI(title="ML Pipeline API")
 
 # Dev-friendly CORS: the Vite dev server runs on 5173 by default.
-# Tighten this to your real frontend origin before deploying.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -96,11 +85,6 @@ def get_session_or_404(session_id: str) -> Session:
 
 
 def read_uploaded_file(filename: str, content: bytes) -> pd.DataFrame:
-    """
-    Reads an uploaded file into a DataFrame based on its extension.
-    Shared by the upload endpoint and the merge endpoint so both accept
-    the same set of formats.
-    """
     lower = filename.lower()
     try:
         if lower.endswith(".csv"):
@@ -118,11 +102,6 @@ def read_uploaded_file(filename: str, content: bytes) -> pd.DataFrame:
 
 
 def build_feature_info(df: pd.DataFrame, cols):
-    """
-    Describes each pre-encoding feature column so the frontend can build
-    a sensible predict form: number input for numeric columns, dropdown
-    of observed values for categorical ones.
-    """
     info = []
     for col in cols:
         is_numeric = pd.api.types.is_numeric_dtype(df[col])
@@ -143,25 +122,12 @@ TEXT_DERIVED_VIRTUAL_NAME = "case_description"
 
 
 def split_text_derived_columns(cols):
-    """
-    Separates the auto-generated tfidf_* / text_negativity_score columns
-    (opaque, not human-fillable) from everything else. Callers use this to
-    hide the former from the predict form and replace them with a single
-    free-text field instead.
-    """
     text_derived = [c for c in cols if c.startswith(TFIDF_PREFIX) or c == "text_negativity_score"]
     plain = [c for c in cols if c not in text_derived]
     return plain, text_derived
 
 
 def build_feature_defaults(df, plain_cols, text_derived_cols):
-    """
-    One representative value per original feature column: mean for numeric,
-    most common value for categorical, 0 for text-derived columns (an
-    absent-keyword baseline). Used to fill in anything the user's predict
-    form doesn't ask about, instead of the misleading fallback of 0 for
-    every missing field.
-    """
     defaults = {}
     for col in plain_cols:
         if pd.api.types.is_numeric_dtype(df[col]):
@@ -176,11 +142,6 @@ def build_feature_defaults(df, plain_cols, text_derived_cols):
 
 
 def build_predict_form_fields(df, plain_cols, has_text_derived):
-    """
-    The actual list of fields to show a human. Text-derived columns never
-    appear individually — if any exist, they're represented by a single
-    free-text 'case_description' field instead.
-    """
     fields = build_feature_info(df, plain_cols)
     if has_text_derived:
         fields = [{"name": TEXT_DERIVED_VIRTUAL_NAME, "is_numeric": False, "is_text": True}] + fields
@@ -188,13 +149,6 @@ def build_predict_form_fields(df, plain_cols, has_text_derived):
 
 
 def rank_top_features(model, feature_columns, plain_cols, text_derived_cols):
-    """
-    Aggregates encoded-column importances back to the original, human-facing
-    field they came from: one-hot dummies collapse back to their parent
-    categorical column, and every tfidf_*/text_negativity_score column
-    collapses into the single 'case_description' field. Returns the top
-    original field names, most important first.
-    """
     importances = get_feature_importance(model, feature_columns)
     if not importances:
         return []
@@ -218,7 +172,6 @@ def generate_column_stats(df):
     stats = []
     alerts = []
     
-    # Dataset-level health checks
     duplicate_rows = df.duplicated().sum()
     if duplicate_rows > 0:
         alerts.append(f"Found {duplicate_rows} exact duplicate row(s) in the dataset.")
@@ -229,7 +182,6 @@ def generate_column_stats(df):
         n_unique = df[col].nunique()
         is_numeric = pd.api.types.is_numeric_dtype(df[col])
 
-        # Column-level alerts
         if n_unique == 1:
             non_null_series = df[col].dropna()
             first_val = str(non_null_series.iloc[0]) if not non_null_series.empty else "N/A"
@@ -297,13 +249,6 @@ ID_LIKE_KEYWORDS = ("id", "number", "key", "code", "no")
 
 
 def pick_join_column(df_a: pd.DataFrame, df_b: pd.DataFrame, common_cols):
-    """
-    Auto-picks the best column to join on when the user doesn't specify
-    one: prefers a column whose name looks like an identifier ('case
-    number', 'id', 'code', ...); falls back to whichever shared column
-    has the most unique values in df_a, since a true key column is
-    usually close to one-value-per-row.
-    """
     id_like = [c for c in common_cols if any(kw in c.lower() for kw in ID_LIKE_KEYWORDS)]
     candidates = id_like if id_like else common_cols
     return max(candidates, key=lambda c: df_a[c].nunique())
@@ -316,21 +261,6 @@ async def merge_files(
     mode: str = Form("concat"),
     join_column: Optional[str] = Form(None),
 ):
-    """
-    Combines two datasets in one of two ways:
-
-    mode="concat" (default) — stacks file B's rows underneath file A's
-    rows to make one bigger dataset. Columns are matched by name; a
-    column only present in one file gets left blank for the other
-    file's rows rather than dropping the column.
-
-    mode="join" — a relational join: keeps only rows where the values
-    in `join_column` (or an auto-picked column, if not given) match
-    between the two files, and combines the rest of each row's columns
-    side by side. Use this when the two files describe the SAME records
-    but hold different information about them (e.g. ticket details in
-    one file, resolution outcomes in another, linked by a ticket ID).
-    """
     content_a = await file_a.read()
     content_b = await file_b.read()
 
@@ -365,7 +295,7 @@ async def merge_files(
 
         suffix = "joined"
 
-    else:  # mode == "concat"
+    else:
         if not common_cols:
             raise HTTPException(
                 400,
@@ -399,20 +329,44 @@ def columns(session_id: str):
 
 
 @app.get("/api/sessions/{session_id}/preview")
-def preview(session_id: str, rows: int = 10):
+def preview(session_id: str, rows: Optional[int] = None):
     session = get_session_or_404(session_id)
     df = session.df_raw
     
     column_stats, alerts = generate_column_stats(df)
+    preview_df = df.head(rows) if rows is not None else df
     
     return {
-        "preview": to_jsonable(df.head(rows).to_dict("records")),
+        "preview": to_jsonable(preview_df.to_dict("records")),
         "n_rows": len(df),
         "n_cols": len(df.columns),
         "missing_values": int(df.isnull().sum().sum()),
         "numeric_features": int(df.select_dtypes(include="number").shape[1]),
         "column_stats": to_jsonable(column_stats),
         "alerts": alerts,
+    }
+@app.get("/api/dashboard/stats")
+def get_dashboard_stats(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    severity: Optional[List[str]] = Query(None),
+    region: Optional[List[str]] = Query(None),
+    team: Optional[List[str]] = Query(None)
+):
+    filters = {
+        "start_date": start_date,
+        "end_date": end_date,
+        "severity": severity,
+        "region": region,
+        "team": team
+    }
+    
+    # Slice your master df (assuming df is loaded globally or via dependency)
+    filtered_df = filter_support_tickets(df, filters)
+    
+    return {
+        "total_tickets": len(filtered_df),
+        # Add your specific SLA metrics and chart data aggregations here
     }
 
 
@@ -696,9 +650,6 @@ def predict(session_id: str, req: PredictRequest):
     if model is None:
         raise HTTPException(404, f"No trained model named '{req.model_name}'.")
 
-    # Start from the dataset's real averages/most-common values, not 0 —
-    # 0 is a plausible real value for many columns and silently distorts
-    # the prediction for every field the user didn't fill in.
     full_sample = dict(getattr(session, "original_feature_defaults", None) or {})
 
     user_sample = dict(req.sample)

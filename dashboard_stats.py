@@ -46,6 +46,34 @@ def _extract_raw_case_info(row):
     }
 
 
+def filter_support_tickets(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
+    """
+    Applies global dashboard filters to the master ticket DataFrame.
+    """
+    filtered_df = df.copy()
+    
+    # Date range filter
+    if filters.get('start_date') and filters.get('end_date'):
+        filtered_df['created_at'] = pd.to_datetime(filtered_df['created_at'])
+        start = pd.to_datetime(filters['start_date'])
+        end = pd.to_datetime(filters['end_date'])
+        filtered_df = filtered_df[(filtered_df['created_at'] >= start) & (filtered_df['created_at'] <= end)]
+    
+    # Severity filter
+    if filters.get('severity'):
+        filtered_df = filtered_df[filtered_df['severity'].isin(filters['severity'])]
+
+    # Region filter
+    if filters.get('region'):
+        filtered_df = filtered_df[filtered_df['region'].isin(filters['region'])]
+
+    # Team Assignment filter
+    if filters.get('team'):
+        filtered_df = filtered_df[filtered_df['team'].isin(filters['team'])]
+
+    return filtered_df
+
+
 def build_dashboard_summary(df_raw, recent_n=5, attention_n=5):
     """
     Returns a dict shaped exactly to match Dashboard.jsx's expected props:

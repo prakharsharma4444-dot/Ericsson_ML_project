@@ -1,4 +1,5 @@
 import { LayoutDashboard, Upload, History, Settings, PlusCircle } from 'lucide-react';
+import ericssonLogo from '../assets/ericsson-logo.svg';
 
 const NAV_ITEMS = [
   { name: 'Dashboard', icon: LayoutDashboard },
@@ -15,14 +16,15 @@ function Sidebar({ active, onNavigate, onNewAnalysis, theme }) {
         : 'bg-white border-slate-200 text-slate-800'
     }`}>
       <div>
-        {/* Brand Logo */}
-        <div className="flex items-center gap-3 px-3 py-4 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white text-lg shadow-sm">
-            E
-          </div>
-          <span className={`font-bold text-lg tracking-wide ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-            ERICSSON
-          </span>
+        {/* Brand Logo Container */}
+        <div className="flex items-center justify-center py-4 mb-4">
+          <img 
+            src={ericssonLogo} 
+            alt="Ericsson Logo" 
+            className={`h-16 object-contain transition-all ${
+              theme === 'dark' ? 'brightness-0 invert' : ''
+            }`}
+          />
         </div>
 
         {/* New Analysis Action */}

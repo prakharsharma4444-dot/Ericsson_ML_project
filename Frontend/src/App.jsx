@@ -31,6 +31,23 @@ function App() {
   const [dashboardError, setDashboardError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Filters — lifted up so both TopBar (the dropdown UI) and Dashboard
+  // (the actual filtering logic) can share the same state.
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+  const [filterSeverities, setFilterSeverities] = useState([]);
+  const [filterRegions, setFilterRegions] = useState([]);
+  const [filterTeams, setFilterTeams] = useState([]);
+
+  const handleClearAllFilters = () => {
+    setFilterStartDate('');
+    setFilterEndDate('');
+    setFilterSeverities([]);
+    setFilterRegions([]);
+    setFilterTeams([]);
+    setSearchQuery('');
+  };
+
   // --- Merge feature state ---
   const [mergeMode, setMergeMode] = useState(false);
   const [selectedForMerge, setSelectedForMerge] = useState([]);
@@ -281,7 +298,16 @@ function App() {
         theme={theme}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <TopBar searchQuery={searchQuery} onSearchChange={setSearchQuery} theme={theme} />
+        <TopBar
+          searchQuery={searchQuery} onSearchChange={setSearchQuery}
+          startDate={filterStartDate} setStartDate={setFilterStartDate}
+          endDate={filterEndDate} setEndDate={setFilterEndDate}
+          selectedSeverities={filterSeverities} setSelectedSeverities={setFilterSeverities}
+          selectedRegions={filterRegions} setSelectedRegions={setFilterRegions}
+          selectedTeams={filterTeams} setSelectedTeams={setFilterTeams}
+          onClearAllFilters={handleClearAllFilters}
+          theme={theme}
+        />
         <main className={`flex-1 overflow-y-auto p-6 ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'}`}>
           {error && (
             <div className="mb-4 p-4 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl text-xs font-semibold">
@@ -311,6 +337,12 @@ function App() {
                   searchQuery={searchQuery}
                   onClearSearch={() => setSearchQuery('')}
                   onMakePrediction={handleMakePrediction}
+                  startDate={filterStartDate}
+                  endDate={filterEndDate}
+                  selectedSeverities={filterSeverities}
+                  selectedRegions={filterRegions}
+                  selectedTeams={filterTeams}
+                  onClearAllFilters={handleClearAllFilters}
                   theme={theme}
                 />
               )}

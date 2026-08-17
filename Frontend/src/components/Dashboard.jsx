@@ -45,13 +45,13 @@ const defaultPriorityData = [
 ];
 
 const defaultRecent = [
-  { caseId: 'CAS-9091', subject: 'Network Connectivity Failure in Node B', status: 'In Progress', priority: 'High', dateOpen: '2026-03-10', solutionTarget: '2026-03-12', contactName: 'John Doe', caseOwner: 'Alice Smith', desc: 'Node lost connectivity following scheduled maintenance.', lastUpdated: '10 mins ago' },
-  { caseId: 'CAS-9088', subject: 'Authentication Timeout Error', status: 'Closed', priority: 'Medium', dateOpen: '2026-03-09', solutionTarget: '2026-03-10', contactName: 'Jane Smith', caseOwner: 'Bob Johnson', desc: 'Users experiencing intermittent login timeouts.', lastUpdated: '1 hour ago' },
+  { caseId: 'CAS-9091', subject: 'Network Connectivity Failure in Node B', status: 'In Progress', priority: 'High', region: 'NA', dateOpen: '2026-03-10', solutionTarget: '2026-03-12', contactName: 'John Doe', caseOwner: 'Alice Smith', desc: 'Node lost connectivity following scheduled maintenance.', lastUpdated: '10 mins ago' },
+  { caseId: 'CAS-9088', subject: 'Authentication Timeout Error', status: 'Closed', priority: 'Medium', region: 'EMEA', dateOpen: '2026-03-09', solutionTarget: '2026-03-10', contactName: 'Jane Smith', caseOwner: 'Bob Johnson', desc: 'Users experiencing intermittent login timeouts.', lastUpdated: '1 hour ago' },
 ];
 
 const defaultAttention = [
-  { caseId: 'CAS-8902', issue: 'Overdue by 3d', subject: 'Database Replication Lag', status: 'Open', priority: 'Critical', dateOpen: '2026-03-01', solutionTarget: '2026-03-05', contactName: 'Robert Vance', caseOwner: 'Unassigned', desc: 'Primary DB replica lagging by over 45 minutes.' },
-  { caseId: 'CAS-8877', issue: 'SLA Target due today', subject: 'Gateway Buffer Overflow', status: 'Open', priority: 'High', dateOpen: '2026-03-04', solutionTarget: '2026-03-08', contactName: 'Elena Rostova', caseOwner: 'Charlie Brown', desc: 'Packet drop rate spiked to 12% on gateway alpha.' },
+  { caseId: 'CAS-8902', issue: 'Overdue by 3d', subject: 'Database Replication Lag', status: 'Open', priority: 'Critical', region: 'APAC', dateOpen: '2026-03-01', solutionTarget: '2026-03-05', contactName: 'Robert Vance', caseOwner: 'Unassigned', desc: 'Primary DB replica lagging by over 45 minutes.' },
+  { caseId: 'CAS-8877', issue: 'SLA Target due today', subject: 'Gateway Buffer Overflow', status: 'Open', priority: 'High', region: 'NA', dateOpen: '2026-03-04', solutionTarget: '2026-03-08', contactName: 'Elena Rostova', caseOwner: 'Charlie Brown', desc: 'Packet drop rate spiked to 12% on gateway alpha.' },
 ];
 
 const STATUS_PILL = {
@@ -71,6 +71,13 @@ function Dashboard({
   onClearSearch,
   onExportReport,
   onMakePrediction,
+  // Filters now come from App.jsx (shared with TopBar's filter dropdown)
+  startDate = '',
+  endDate = '',
+  selectedSeverities = [],
+  selectedRegions = [],
+  selectedTeams = [],
+  onClearAllFilters,
 }) {
   const [selectedCaseModal, setSelectedCaseModal] = useState(null);
 
@@ -89,23 +96,59 @@ function Dashboard({
   const safeRecent = Array.isArray(recentCases) && recentCases.length > 0 ? recentCases : defaultRecent;
   const safeAttention = Array.isArray(attentionCases) && attentionCases.length > 0 ? attentionCases : defaultAttention;
 
-  const matchesSearch = (item, q) => {
-    if (!q || !q.trim()) return true;
-    const term = q.toLowerCase().trim();
-    return (
-      (item.caseId && item.caseId.toLowerCase().includes(term)) ||
-      (item.subject && item.subject.toLowerCase().includes(term)) ||
-      (item.status && item.status.toLowerCase().includes(term)) ||
-      (item.priority && item.priority.toLowerCase().includes(term)) ||
-      (item.contactName && item.contactName.toLowerCase().includes(term)) ||
-      (item.caseOwner && item.caseOwner.toLowerCase().includes(term)) ||
-      (item.desc && item.desc.toLowerCase().includes(term)) ||
-      (item.issue && item.issue.toLowerCase().includes(term))
-    );
+  // Comprehensive Global Filter Predicate — logic unchanged, just reads
+  // filter values from props instead of local state now.
+  const matchesFilters = (item) => {
+    if (searchQuery && searchQuery.trim()) {
+      const term = searchQuery.toLowerCase().trim();
+      const matches = (
+        (item.caseId && item.caseId.toLowerCase().includes(term)) ||
+        (item.subject && item.subject.toLowerCase().includes(term)) ||
+        (item.status && item.status.toLowerCase().includes(term)) ||
+        (item.priority && item.priority.toLowerCase().includes(term)) ||
+        (item.contactName && item.contactName.toLowerCase().includes(term)) ||
+        (item.caseOwner && item.caseOwner.toLowerCase().includes(term)) ||
+        (item.desc && item.desc.toLowerCase().includes(term)) ||
+        (item.issue && item.issue.toLowerCase().includes(term)) ||
+        (item.region && item.region.toLowerCase().includes(term))
+      );
+      if (!matches) return false;
+    }
+
+    if (startDate && item.dateOpen && item.dateOpen < startDate) return false;
+    if (endDate && item.dateOpen && item.dateOpen > endDate) return false;
+
+    if (selectedSeverities.length > 0) {
+      const p = item.priority || item.severity;
+      if (!p || !selectedSeverities.includes(p)) return false;
+    }
+
+    if (selectedRegions.length > 0) {
+      const r = item.region;
+      if (!r || !selectedRegions.includes(r)) return false;
+    }
+
+    if (selectedTeams.length > 0) {
+      const t = item.team || item.caseOwner;
+      if (!t || !selectedTeams.includes(t)) return false;
+    }
+
+    return true;
   };
 
-  const filteredRecent = safeRecent.filter((c) => matchesSearch(c, searchQuery));
-  const filteredAttention = safeAttention.filter((c) => matchesSearch(c, searchQuery));
+  const filteredRecent = safeRecent.filter(matchesFilters);
+  const filteredAttention = safeAttention.filter(matchesFilters);
+
+  const hasActiveFilters = searchQuery || startDate || endDate || selectedSeverities.length > 0 || selectedRegions.length > 0 || selectedTeams.length > 0;
+
+  // Short human-readable summary of what's currently applied, for the
+  // slim banner below (replaces the old full-width filter panel).
+  const activeFilterLabels = [
+    ...(startDate || endDate ? [`Date: ${startDate || '…'} to ${endDate || '…'}`] : []),
+    ...selectedSeverities,
+    ...selectedRegions,
+    ...selectedTeams,
+  ];
 
   return (
     <div className="space-y-6 relative">
@@ -123,19 +166,27 @@ function Dashboard({
         </button>
       </div>
 
-      {searchQuery && (
-        <div className="flex items-center justify-between bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/60 rounded-xl px-4 py-2.5 text-xs text-blue-900 dark:text-blue-200">
-          <div className="flex items-center gap-2">
-            <Filter size={14} className="text-blue-600 dark:text-blue-400" />
-            <span>
-              Filtering cases matching: <strong className="font-semibold text-blue-950 dark:text-blue-100">"{searchQuery}"</strong>
-            </span>
+      {/* Slim active-filters summary — the full filter UI now lives in the TopBar dropdown */}
+      {hasActiveFilters && (
+        <div className="flex items-center justify-between flex-wrap gap-2 bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/60 rounded-xl px-4 py-2.5 text-xs text-blue-900 dark:text-blue-200">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Filter size={14} className="text-blue-600 dark:text-blue-400 flex-shrink-0" />
+            {searchQuery && (
+              <span className="bg-white/60 dark:bg-slate-900/50 px-2 py-0.5 rounded-md font-medium">
+                Search: "{searchQuery}"
+              </span>
+            )}
+            {activeFilterLabels.map((label) => (
+              <span key={label} className="bg-white/60 dark:bg-slate-900/50 px-2 py-0.5 rounded-md font-medium">
+                {label}
+              </span>
+            ))}
           </div>
           <button
-            onClick={onClearSearch}
-            className="flex items-center gap-1 font-semibold text-blue-700 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-200 transition"
+            onClick={onClearAllFilters}
+            className="flex items-center gap-1 font-semibold text-blue-700 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-200 transition flex-shrink-0"
           >
-            Clear Filter <X size={12} />
+            Clear All <X size={12} />
           </button>
         </div>
       )}
@@ -197,7 +248,7 @@ function Dashboard({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Recent Activity (n-1 Date)</h3>
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Recent Activity (Filtered)</h3>
             <span className="text-xs text-slate-400 dark:text-slate-500">Click row for raw info</span>
           </div>
 
@@ -212,6 +263,7 @@ function Dashboard({
                 <tr className="text-slate-400 dark:text-slate-500 text-left border-b border-slate-100 dark:border-slate-800">
                   <th className="pb-2 font-medium">Case ID</th>
                   <th className="pb-2 font-medium">Status</th>
+                  <th className="pb-2 font-medium">Region</th>
                   <th className="pb-2 font-medium text-right">Last Updated</th>
                 </tr>
               </thead>
@@ -228,6 +280,7 @@ function Dashboard({
                         {c.status}
                       </span>
                     </td>
+                    <td className="py-2.5 text-slate-500 dark:text-slate-400 font-medium">{c.region || 'N/A'}</td>
                     <td className="py-2.5 text-right text-slate-400 dark:text-slate-500">{c.lastUpdated}</td>
                   </tr>
                 ))}
@@ -240,7 +293,7 @@ function Dashboard({
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <AlertCircle size={16} className="text-red-500 dark:text-red-400" />
-              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Needs Attention (Open Only)</h3>
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Needs Attention (Filtered)</h3>
             </div>
             {filteredAttention.length > 0 && (
               <span className="text-[11px] font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/50 px-2 py-0.5 rounded-full">
@@ -263,7 +316,14 @@ function Dashboard({
                   className="flex items-center justify-between text-xs p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 cursor-pointer transition group"
                 >
                   <div>
-                    <p className="font-semibold text-blue-600 dark:text-blue-400 group-hover:underline">#{c.caseId}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-blue-600 dark:text-blue-400 group-hover:underline">#{c.caseId}</p>
+                      {c.region && (
+                        <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-1.5 py-0.2 rounded font-medium">
+                          {c.region}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-red-500 dark:text-red-400 mt-0.5 font-medium">{c.issue}</p>
                   </div>
                   <span className="text-slate-400 dark:text-slate-500 text-[11px] group-hover:text-blue-600 dark:group-hover:text-blue-400 font-medium">

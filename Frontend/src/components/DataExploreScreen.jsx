@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+// DataExploreScreen.jsx[cite: 5]
+import { useState, useEffect, useMemo } from 'react';
 import { 
   ScatterChart, Scatter, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
-import { AlertTriangle, ShieldCheck, Hash, Type, X, Search, Download, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, ShieldCheck, Hash, Type, X, Search, Download, ArrowLeft, Loader2 } from 'lucide-react';
 import { getPreview, compareColumns, getColumnDetail, getReportUrl } from "../api";
 import PivotBuilder from "./PivotBuilder";
 
@@ -26,20 +27,23 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 export default function DataExploreScreen({ sessionId, columns = [], onContinue, onBack }) {
   const [preview, setPreview] = useState(null);
-
-  const colNames = Array.isArray(columns)
-    ? columns.map(c => {
-        if (typeof c === 'string') return c;
-        if (typeof c === 'object' && c !== null) return c.name || c.column || c.label || String(c);
-        return String(c);
-      })
-    : [];
-
-  const [col1, setCol1] = useState(colNames[0] || '');
-  const [col2, setCol2] = useState(colNames[1] || colNames[0] || '');
-  const [comparison, setComparison] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loadingPreview, setLoadingPreview] = useState(true);
   const [error, setError] = useState(null);
+
+  // Memoize extracted column names to prevent unnecessary re-renders
+  const colNames = useMemo(() => {
+    if (!Array.isArray(columns)) return [];
+    return columns.map(c => {
+      if (typeof c === 'string') return c;
+      if (typeof c === 'object' && c !== null) return c.name || c.column || c.label || String(c);
+      return String(c);
+    });
+  }, [columns]);
+
+  const [col1, setCol1] = useState('');
+  const [col2, setCol2] = useState('');
+  const [comparison, setComparison] = useState(null);
+  const [loadingCompare, setLoadingCompare] = useState(false);
   const [activeTab, setActiveTab] = useState('profiling');
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -50,18 +54,38 @@ export default function DataExploreScreen({ sessionId, columns = [], onContinue,
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 15;
 
+  // Fetch preview on sessionId change with cleanup flag
   useEffect(() => {
+    let isMounted = true;
+    setLoadingPreview(true);
+    setError(null);
+
     getPreview(sessionId)
-      .then(setPreview)
-      .catch(err => setError(err.message));
+      .then(data => {
+        if (isMounted) {
+          setPreview(data);
+          setLoadingPreview(false);
+        }
+      })
+      .catch(err => {
+        if (isMounted) {
+          setError(err.message || 'Failed to load dataset preview.');
+          setLoadingPreview(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [sessionId]);
 
+  // Synchronize column dropdown selections when column list updates
   useEffect(() => {
     if (colNames.length > 0) {
-      if (!col1 || !colNames.includes(col1)) setCol1(colNames[0]);
-      if (!col2 || !colNames.includes(col2)) setCol2(colNames[1] || colNames[0]);
+      setCol1(prev => (prev && colNames.includes(prev) ? prev : colNames[0]));
+      setCol2(prev => (prev && colNames.includes(prev) ? prev : colNames[1] || colNames[0]));
     }
-  }, [columns]);
+  }, [colNames]);
 
   const handleInspectColumn = async (colName) => {
     setSelectedCol(colName);
@@ -71,20 +95,24 @@ export default function DataExploreScreen({ sessionId, columns = [], onContinue,
       const data = await getColumnDetail(sessionId, colName);
       setColDetail(data);
     } catch (err) {
-      console.error(err);
+      console.error('Error loading column detail:', err);
+    } finally {
+      setLoadingDetail(false);
     }
-    setLoadingDetail(false);
   };
 
   const handleCompare = async () => {
-    setLoading(true);
+    if (!col1 || !col2) return;
+    setLoadingCompare(true);
     setError(null);
     try {
-      setComparison(await compareColumns(sessionId, col1, col2));
+      const result = await compareColumns(sessionId, col1, col2);
+      setComparison(result);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Failed to generate comparison visual.');
+    } finally {
+      setLoadingCompare(false);
     }
-    setLoading(false);
   };
 
   const handleExportStats = () => {
@@ -100,17 +128,32 @@ export default function DataExploreScreen({ sessionId, columns = [], onContinue,
     downloadAnchor.remove();
   };
 
-  const rawRows = preview?.preview || [];
-  const filteredRows = rawRows.filter(row =>
-    Object.values(row).some(val =>
-      String(val ?? '').toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  );
+  // Memoize filtered rows calculation for optimal table searching
+  const rawRows = useMemo(() => preview?.preview || [], [preview]);
+  
+  // Extract table headers safely even if preview array is initially empty
+  const tableHeaders = useMemo(() => {
+    if (rawRows.length > 0) return Object.keys(rawRows[0]);
+    return colNames;
+  }, [rawRows, colNames]);
+
+  const filteredRows = useMemo(() => {
+    if (!searchTerm.trim()) return rawRows;
+    const term = searchTerm.toLowerCase();
+    return rawRows.filter(row =>
+      Object.values(row).some(val =>
+        String(val ?? '').toLowerCase().includes(term)
+      )
+    );
+  }, [rawRows, searchTerm]);
 
   const totalRows = filteredRows.length;
-  const totalPages = Math.ceil(totalRows / rowsPerPage);
+  const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
-  const displayedRows = filteredRows.slice(startIndex, startIndex + rowsPerPage);
+  const displayedRows = useMemo(
+    () => filteredRows.slice(startIndex, startIndex + rowsPerPage),
+    [filteredRows, startIndex, rowsPerPage]
+  );
 
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto text-slate-900 dark:text-slate-100 transition-colors duration-200">
@@ -119,7 +162,7 @@ export default function DataExploreScreen({ sessionId, columns = [], onContinue,
         {onBack && (
           <button
             onClick={onBack}
-            className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-200 transition mb-3"
+            className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-200 transition mb-3 focus:outline-none"
           >
             <ArrowLeft size={14} /> Back to Previous Step
           </button>
@@ -135,7 +178,7 @@ export default function DataExploreScreen({ sessionId, columns = [], onContinue,
             <button
               onClick={handleExportStats}
               disabled={!preview?.column_stats}
-              className="flex items-center gap-1.5 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-3 py-2 rounded-lg text-xs font-medium transition shadow-sm disabled:opacity-50"
+              className="flex items-center gap-1.5 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-3 py-2 rounded-lg text-xs font-medium transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download size={14} />
               <span>Export Summary</span>
@@ -152,11 +195,21 @@ export default function DataExploreScreen({ sessionId, columns = [], onContinue,
         </div>
       </div>
 
-      {error && <div className="p-3 bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900 rounded-lg text-sm">{error}</div>}
+      {error && (
+        <div className="p-3 bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900 rounded-lg text-sm flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-xs text-red-500 hover:underline">Dismiss</button>
+        </div>
+      )}
 
-      {preview && (
+      {loadingPreview ? (
+        <div className="py-24 flex flex-col items-center justify-center space-y-3 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm">
+          <Loader2 className="w-7 h-7 animate-spin text-blue-600 dark:text-blue-400" />
+          <p className="text-xs font-medium text-gray-500 dark:text-slate-400">Loading dataset profiling statistics...</p>
+        </div>
+      ) : preview && (
         <>
-          {/* Top Metric Cards */}
+          {/* Metric Overview Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatBox label="Total Rows" value={preview.n_rows?.toLocaleString()} />
             <StatBox label="Total Features" value={preview.n_cols} />
@@ -184,7 +237,7 @@ export default function DataExploreScreen({ sessionId, columns = [], onContinue,
             </div>
           )}
 
-          {/* Tabbed Section */}
+          {/* Tabbed Profiling Section */}
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm p-5 transition-colors duration-200">
             <div className="flex border-b border-gray-200 dark:border-slate-800 mb-4 pb-2 gap-4 justify-between items-center flex-wrap">
               <div className="flex gap-4">
@@ -267,10 +320,10 @@ export default function DataExploreScreen({ sessionId, columns = [], onContinue,
                             <div className="w-16 bg-gray-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
                               <div 
                                 className={`h-full ${col.missing_pct > 20 ? 'bg-amber-500' : 'bg-blue-500'}`}
-                                style={{ width: `${Math.min(col.missing_pct, 100)}%` }}
+                                style={{ width: `${Math.min(col.missing_pct || 0, 100)}%` }}
                               />
                             </div>
-                            <span className="text-gray-600 dark:text-slate-400 font-medium">{col.missing_pct}%</span>
+                            <span className="text-gray-600 dark:text-slate-400 font-medium">{col.missing_pct ?? 0}%</span>
                           </div>
                         </td>
                         <td className="p-2.5 text-gray-700 dark:text-slate-300">{col.unique_count?.toLocaleString()}</td>
@@ -292,14 +345,14 @@ export default function DataExploreScreen({ sessionId, columns = [], onContinue,
               </div>
             )}
 
-            {/* TAB 2: Raw Preview */}
+            {/* TAB 2: Raw Data Table Preview */}
             {activeTab === 'preview' && (
               <div>
                 <div className="overflow-x-auto">
                   <table className="text-xs w-full">
                     <thead>
                       <tr>
-                        {preview.preview[0] && Object.keys(preview.preview[0]).map(col => (
+                        {tableHeaders.map(col => (
                           <th key={col} className="text-left p-2 border-b border-gray-200 dark:border-slate-800 font-semibold text-gray-700 dark:text-slate-300 whitespace-nowrap">{col}</th>
                         ))}
                       </tr>
@@ -308,11 +361,14 @@ export default function DataExploreScreen({ sessionId, columns = [], onContinue,
                       {displayedRows.length > 0 ? (
                         displayedRows.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors">
-                            {Object.values(row).map((val, j) => (
-                              <td key={j} className="p-2 border-b border-gray-100 dark:border-slate-800 text-gray-600 dark:text-slate-300 whitespace-nowrap">
-                                {typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val ?? '')}
-                              </td>
-                            ))}
+                            {tableHeaders.map((col, j) => {
+                              const val = row[col];
+                              return (
+                                <td key={j} className="p-2 border-b border-gray-100 dark:border-slate-800 text-gray-600 dark:text-slate-300 whitespace-nowrap">
+                                  {typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val ?? '')}
+                                </td>
+                              );
+                            })}
                           </tr>
                         ))
                       ) : (
@@ -365,7 +421,7 @@ export default function DataExploreScreen({ sessionId, columns = [], onContinue,
         </>
       )}
 
-      {/* Visual Comparison Section */}
+      {/* Visual Pairwise Visualizer Section */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm p-5 transition-colors duration-200">
         <h3 className="text-sm font-semibold text-gray-800 dark:text-slate-200 mb-1">Pairwise Relationship Visualizer</h3>
         <p className="text-xs text-gray-500 dark:text-slate-400 mb-4">Select any two columns to plot interactions and scatter spreads</p>
@@ -390,8 +446,13 @@ export default function DataExploreScreen({ sessionId, columns = [], onContinue,
               <option key={c} value={c} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">{c}</option>
             ))}
           </select>
-          <button onClick={handleCompare} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-medium transition-colors hover:bg-blue-700 shadow-sm">
-            {loading ? 'Plotting...' : 'Plot Comparison'}
+          <button 
+            onClick={handleCompare} 
+            disabled={loadingCompare || !col1 || !col2} 
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-medium transition-colors hover:bg-blue-700 shadow-sm flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {loadingCompare && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            <span>{loadingCompare ? 'Plotting...' : 'Plot Comparison'}</span>
           </button>
         </div>
 
@@ -462,7 +523,7 @@ export default function DataExploreScreen({ sessionId, columns = [], onContinue,
         </button>
       </div>
 
-      {/* Inspector Modal */}
+      {/* Column Inspector Modal */}
       {selectedCol && (
         <div className="fixed inset-0 bg-black/50 dark:bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative border border-gray-200 dark:border-slate-800">
@@ -479,7 +540,10 @@ export default function DataExploreScreen({ sessionId, columns = [], onContinue,
             <p className="text-xs text-gray-500 dark:text-slate-400 mb-5">Full dataset distribution analysis</p>
 
             {loadingDetail ? (
-              <div className="py-16 text-center text-sm text-gray-500 dark:text-slate-400">Calculating dataset distribution...</div>
+              <div className="py-16 flex flex-col items-center justify-center space-y-2">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-600 dark:text-blue-400" />
+                <p className="text-xs text-gray-500 dark:text-slate-400">Calculating dataset distribution...</p>
+              </div>
             ) : colDetail ? (
               <div className="space-y-5">
                 {colDetail.type === 'Numeric' && (

@@ -5,55 +5,6 @@ Works on any tabular dataset for either classification or regression.
 Only the target column and file path are dataset-specific; everything
 else (cleaning, encoding, scaling, model choice, evaluation) adapts
 automatically based on what's detected in the data.
-
-Typical usage:
-
-    import pandas as pd
-    from pipeline import (
-        validate_inputs, clean_data, encode_categoricals, check_imbalance,
-        encode_target, check_outliers, detect_problem_type, maybe_log_transform,
-        split_data, choose_scaler, get_default_models, evaluate_model,
-        recommend_model, save_model, load_model, predict_single,
-        get_feature_importance,
-    )
-
-    df = pd.read_csv("data.csv")
-    target_col = "price"
-
-    errors, warnings = validate_inputs(df, target_col)
-    if errors:
-        raise ValueError(errors)
-
-    problem_type = detect_problem_type(df[target_col])
-    df, target_col, was_log_transformed = maybe_log_transform(df, target_col, problem_type)
-
-    df, clean_report = clean_data(df)
-    df = encode_categoricals(df, target_col)
-
-    if problem_type == "classification":
-        check_imbalance(df, target_col)
-        df = encode_target(df, target_col)
-
-    outlier_summary = check_outliers(df, target_col)
-
-    if was_log_transformed:
-        X = df.drop(columns=[target_col, target_col.replace("_log", "")])
-    else:
-        X = df.drop(columns=[target_col])
-    y = df[target_col]
-
-    X_train, X_test, y_train, y_test = split_data(X, y)
-    scaler = choose_scaler(outlier_summary, total_features=X.shape[1])
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-
-    models = get_default_models(problem_type)
-    results_df, trained_models = train_and_evaluate(
-        models, X_train_scaled, y_train, X_test_scaled, y_test, problem_type, was_log_transformed
-    )
-
-    best_model = recommend_model(results_df, trained_models, problem_type, priority="f1")
-    save_model(best_model, scaler, X_train.columns.tolist(), problem_type, was_log_transformed, "model.joblib")
 """
 
 import numpy as np
@@ -62,7 +13,7 @@ import joblib
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, RobustScaler, StandardScaler
-from sklearn.linear_model import LogisticRegression, LinearRegression, Ridge, HuberRegressor
+from sklearn.linear_model import LogisticRegression, Ridge, HuberRegressor
 from sklearn.ensemble import (
     RandomForestClassifier,
     RandomForestRegressor,
@@ -83,16 +34,13 @@ from sklearn.metrics import (
 
 
 # ---------------------------------------------------------------------------
-# 1. Input validation
+# 1. Input validation & Data Extraction
 # ---------------------------------------------------------------------------
 
 def validate_inputs(df, target_col):
     """
     Checks a dataframe + target column for common problems before any
     processing happens. Returns (errors, warnings) — both lists of strings.
-
-    errors: fatal problems, caller should stop and surface these to the user.
-    warnings: non-fatal issues, safe to proceed but worth telling the user.
     """
     errors = []
     warnings = []
@@ -140,7 +88,6 @@ def get_column_info(df):
     """
     Returns a list of dicts describing every column — name, dtype,
     unique value count, a few sample values, and missing count.
-    Intended for a frontend column picker / data preview screen.
     """
     info = []
     for col in df.columns:
@@ -154,28 +101,34 @@ def get_column_info(df):
     return info
 
 
+def get_raw_data_table(df, max_rows=None):
+    """
+    Returns raw tabular data formatted for frontend JSON API responses.
+    Replaces NaNs/Infs with None to prevent JSON serialization errors.
+    Pass max_rows=None to return all rows.
+    """
+    data = df.copy().replace({np.nan: None, np.inf: None, -np.inf: None})
+    if max_rows is not None:
+        data = data.head(max_rows)
+    return {
+        "total_rows": len(df),
+        "columns": list(data.columns),
+        "rows": data.to_dict(orient="records"),
+    }
+
+
 # ---------------------------------------------------------------------------
 # 2. Problem type detection + target transforms
 # ---------------------------------------------------------------------------
 
 def detect_problem_type(y, task_name=None):
-    """Detects whether a dataset target requires classification or regression.
-
-    Args:
-        y (pd.Series): The target column.
-        task_name (str, optional): The name of the prediction task.
-
-    Returns:
-        str: "classification" or "regression"
-    """
-    # Force resolution target to regression
+    """Detects whether a dataset target requires classification or regression."""
     if task_name == "resolution" or y.name == "resolution_hours":
         return "regression"
 
     if y.dtype == "object":
         return "classification"
 
-    # If numeric continuous float column, default to regression
     if pd.api.types.is_float_dtype(y):
         return "regression"
 
@@ -187,15 +140,7 @@ def detect_problem_type(y, task_name=None):
 
 
 def maybe_log_transform(df, target_col, problem_type, skew_threshold=1.0):
-    """
-    For regression targets with meaningful right-skew (e.g. prices),
-    applies a log1p transform and returns the new target column name.
-    No-ops for classification targets or already-reasonable distributions.
-
-    Returns (df, target_col, was_log_transformed). If was_log_transformed
-    is True, predictions must be reversed with np.expm1() before reporting
-    them to a user.
-    """
+    """Applies a log1p transform to right-skewed regression targets."""
     if problem_type != "regression" or not pd.api.types.is_numeric_dtype(df[target_col]):
         print(f"Target '{target_col}' is categorical/non-numeric or a classification task. Skipping log transform.")
         return df, target_col, False
@@ -213,10 +158,7 @@ def maybe_log_transform(df, target_col, problem_type, skew_threshold=1.0):
 
 
 def encode_target(df, target_col):
-    """
-    Converts a text classification target (e.g. 'M'/'B') into numeric
-    labels via LabelEncoder. No-ops if the target is already numeric.
-    """
+    """Converts a text classification target into numeric labels via LabelEncoder."""
     df_copy = df.copy()
     if not pd.api.types.is_numeric_dtype(df_copy[target_col]):
         le = LabelEncoder()
@@ -228,13 +170,18 @@ def encode_target(df, target_col):
 # 3. Cleaning + encoding
 # ---------------------------------------------------------------------------
 
-def clean_data(df):
+def clean_data(df, target_col=None):
     """
-    Removes duplicate rows, fully-empty columns, and obvious ID columns.
-    Returns (df, report) where report is a dict summarizing what was done —
-    safe to return directly to a frontend as JSON.
+    Removes duplicate rows, fully-empty columns, missing target rows, and obvious ID columns.
+    Returns (df, report) summarizing operations.
     """
     report = {"initial_shape": df.shape, "actions_taken": []}
+
+    if target_col and target_col in df.columns:
+        target_nulls = df[target_col].isnull().sum()
+        if target_nulls > 0:
+            df = df.dropna(subset=[target_col])
+            report["actions_taken"].append(f"Dropped {target_nulls} rows with null target values")
 
     dup_count = df.duplicated().sum()
     if dup_count > 0:
@@ -256,10 +203,7 @@ def clean_data(df):
 
 
 def encode_categoricals(df, target_col):
-    """
-    One-hot encodes every categorical (text) feature column, leaving the
-    target column untouched. No-ops if there are no categorical features.
-    """
+    """One-hot encodes categorical feature columns, leaving the target untouched."""
     feature_cols = [col for col in df.columns if col != target_col]
     categorical_feature_cols = df[feature_cols].select_dtypes(include=["object", "str"]).columns.tolist()
 
@@ -277,10 +221,7 @@ def encode_categoricals(df, target_col):
 # ---------------------------------------------------------------------------
 
 def check_imbalance(df, target_col):
-    """
-    Reports class balance for a classification target and flags severe
-    or moderate imbalance. Only meaningful for classification problems.
-    """
+    """Reports class balance for classification targets."""
     counts = df[target_col].value_counts()
     percentages = df[target_col].value_counts(normalize=True) * 100
 
@@ -301,11 +242,7 @@ def check_imbalance(df, target_col):
 
 
 def check_outliers(df, target_col):
-    """
-    Flags numeric feature columns with outliers via the IQR method.
-    Returns a dict of {column_name: outlier_count}. Used to decide
-    whether to use RobustScaler over StandardScaler.
-    """
+    """Flags numeric feature columns with outliers via the IQR method."""
     feature_cols = [col for col in df.columns if col != target_col]
     numeric_cols = df[feature_cols].select_dtypes(include=["int64", "float64"]).columns.tolist()
 
@@ -328,14 +265,7 @@ def check_outliers(df, target_col):
 
 
 def compare_two_columns(df, col1, col2, max_scatter_points=1000):
-    """
-    Compares any two columns for a frontend-driven "explore data" screen.
-    Returns a dict shaped differently depending on the column types:
-
-      numeric vs numeric   -> {'chart_type': 'scatter', 'correlation': ..., 'data': [...]}
-      numeric vs categorical -> {'chart_type': 'boxplot', 'data': [...]}   (grouped stats)
-      categorical vs categorical -> {'chart_type': 'crosstab', 'data': {...}}
-    """
+    """Compariative summary for two dataset columns."""
     result = {"col1": col1, "col2": col2}
 
     col1_numeric = pd.api.types.is_numeric_dtype(df[col1])
@@ -363,16 +293,11 @@ def compare_two_columns(df, col1, col2, max_scatter_points=1000):
 
 
 # ---------------------------------------------------------------------------
-# 5. EDA plots (for local/notebook use — see compare_two_columns for API use)
+# 5. EDA plots
 # ---------------------------------------------------------------------------
 
 def generate_eda_plots(df, target_col, problem_type):
-    """
-    Renders a correlation heatmap, per-feature distribution histograms,
-    and top-feature-vs-target plots. Uses plt.show(), so this is intended
-    for notebook/local use — a web frontend should use compare_two_columns()
-    and render charts client-side instead.
-    """
+    """Renders correlation heatmaps and distribution plots for notebook analysis."""
     import matplotlib.pyplot as plt
     import seaborn as sns
 
@@ -415,10 +340,7 @@ def generate_eda_plots(df, target_col, problem_type):
 # ---------------------------------------------------------------------------
 
 def split_data(X, y, test_size=0.2):
-    """
-    Train/test split that auto-detects problem type and applies stratified
-    sampling for classification (preserves class balance in both splits).
-    """
+    """Train/test split with automated stratified sampling for classification."""
     problem_type = detect_problem_type(y)
     if problem_type == "classification":
         return train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
@@ -426,11 +348,8 @@ def split_data(X, y, test_size=0.2):
 
 
 def choose_scaler(outlier_summary, total_features):
-    """
-    Picks RobustScaler when >=30% of features have notable outliers
-    (robust to extreme values), otherwise StandardScaler.
-    """
-    outlier_ratio = len(outlier_summary) / total_features
+    """Selects RobustScaler if >=30% of features contain outliers, else StandardScaler."""
+    outlier_ratio = len(outlier_summary) / total_features if total_features > 0 else 0
     if outlier_ratio >= 0.3:
         print(f"Significant outliers detected ({len(outlier_summary)}/{total_features} features) -> using RobustScaler")
         return RobustScaler()
@@ -439,15 +358,11 @@ def choose_scaler(outlier_summary, total_features):
 
 
 # ---------------------------------------------------------------------------
-# 7. Models
+# 7. Models & Evaluation
 # ---------------------------------------------------------------------------
 
 def get_default_models(problem_type):
-    """
-    Returns a dict of {model_name: untrained sklearn estimator}, chosen
-    based on problem type. Classification models use class_weight='balanced'
-    where supported, to handle imbalanced targets automatically.
-    """
+    """Returns default model set based on problem type."""
     if problem_type == "classification":
         return {
             "Logistic Regression": LogisticRegression(class_weight="balanced", random_state=42),
@@ -467,12 +382,7 @@ def get_default_models(problem_type):
 
 
 def evaluate_model(y_test, y_pred, problem_type="classification", show_confusion_matrix=True):
-    """
-    Computes standard metrics for either problem type:
-      classification -> accuracy, precision, recall, f1 (+ optional confusion matrix)
-      regression      -> mae, rmse, r2
-    Handles both binary and multiclass classification automatically.
-    """
+    """Computes standard evaluation metrics."""
     results = {}
 
     if problem_type == "classification":
@@ -497,12 +407,7 @@ def evaluate_model(y_test, y_pred, problem_type="classification", show_confusion
 
 
 def train_and_evaluate(models, X_train_scaled, y_train, X_test_scaled, y_test, problem_type, was_log_transformed=False):
-    """
-    Trains every model in `models`, evaluates each on the test set, and
-    returns (results_df, trained_models). If was_log_transformed is True,
-    predictions and y_test are reversed with expm1() before scoring so
-    metrics are reported in the original target scale.
-    """
+    """Trains and evaluates models, reversing log-transformed targets when evaluating."""
     all_results = []
     trained_models = {}
 
@@ -527,13 +432,7 @@ def train_and_evaluate(models, X_train_scaled, y_train, X_test_scaled, y_test, p
 
 
 def recommend_model(results_df, trained_models, problem_type, priority=None):
-    """
-    Picks the best model from a results_df based on a chosen metric.
-    Defaults to f1 (classification) or r2 (regression) if no priority given.
-    Valid priorities:
-      classification -> accuracy, precision, recall, f1
-      regression      -> mae, rmse, r2   (lower is better for mae/rmse)
-    """
+    """Selects the top-performing model based on priority metric."""
     if priority is None:
         priority = "f1" if problem_type == "classification" else "r2"
 
@@ -558,12 +457,7 @@ def recommend_model(results_df, trained_models, problem_type, priority=None):
 
 
 def get_feature_importance(model, feature_names):
-    """
-    Returns a list of (feature_name, importance_score) tuples, sorted
-    descending. Works for tree-based models (feature_importances_) and
-    linear models (coef_). Returns None if the model type doesn't expose
-    either attribute (e.g. SVR/SVC with non-linear kernels).
-    """
+    """Returns sorted feature importances for tree or linear models."""
     if hasattr(model, "feature_importances_"):
         importances = model.feature_importances_
     elif hasattr(model, "coef_"):
@@ -578,11 +472,7 @@ def get_feature_importance(model, feature_names):
 # ---------------------------------------------------------------------------
 
 def save_model(model, scaler, feature_columns, problem_type, was_log_transformed, filepath):
-    """
-    Bundles a trained model with everything needed to use it correctly
-    later: the fitted scaler, the exact feature column order, the problem
-    type, and whether predictions need to be un-logged.
-    """
+    """Saves model bundle with artifacts necessary for deployment."""
     bundle = {
         "model": model,
         "scaler": scaler,
@@ -595,30 +485,18 @@ def save_model(model, scaler, feature_columns, problem_type, was_log_transformed
 
 
 def load_model(filepath):
-    """Loads a bundle saved by save_model(). Returns the bundle dict."""
+    """Loads a saved model bundle."""
     bundle = joblib.load(filepath)
     print(f"Model loaded from {filepath}")
     return bundle
 
 
 def predict_single(model, scaler, sample_dict, feature_columns, was_log_transformed=False):
-    """
-    Predicts on one new sample, given as a dict of {feature_name: value}.
-    Applies the same scaling used during training, reverses any log
-    transform automatically, and returns a JSON-safe dict:
-
-      {'prediction': float, ['confidence': float, 'class_probabilities': [...]]}
-
-    The confidence/probabilities keys are only present for classifiers
-    that support predict_proba.
-    """
+    """Executes single-sample inference and aligns unseen or missing feature columns."""
     sample_df = pd.DataFrame([sample_dict])
+    sample_df = pd.get_dummies(sample_df)
+    sample_df = sample_df.reindex(columns=feature_columns, fill_value=0)
 
-    missing_cols = set(feature_columns) - set(sample_df.columns)
-    if missing_cols:
-        raise ValueError(f"Missing required features: {missing_cols}")
-
-    sample_df = sample_df[feature_columns]
     sample_scaled = scaler.transform(sample_df)
 
     prediction = model.predict(sample_scaled)[0]
@@ -631,5 +509,4 @@ def predict_single(model, scaler, sample_dict, feature_columns, was_log_transfor
         proba = model.predict_proba(sample_scaled)[0]
         result["confidence"] = float(proba.max())
         result["class_probabilities"] = [float(p) for p in proba]
-
     return result
