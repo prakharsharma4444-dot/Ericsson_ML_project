@@ -79,7 +79,7 @@ def _get_negativity_score(text):
     return float(neg_count / len(words))
 
 
-def _add_text_features(df, max_features=12):
+def _add_text_features(df, max_features=30):
     df = df.copy()
     
     subject_text = df["subject"].fillna("").astype(str) if "subject" in df.columns else pd.Series("", index=df.index)
@@ -90,7 +90,13 @@ def _add_text_features(df, max_features=12):
     
     tfidf_vectorizer = None
     try:
-        tfidf_vectorizer = TfidfVectorizer(max_features=max_features, stop_words="english")
+        tfidf_vectorizer = TfidfVectorizer(
+            max_features=max_features,
+            stop_words="english",
+            ngram_range=(1, 2),
+            min_df=2,
+            sublinear_tf=True
+        )
         tfidf_matrix = tfidf_vectorizer.fit_transform(full_text)
         feature_names = [f"tfidf_{word}" for word in tfidf_vectorizer.get_feature_names_out()]
         tfidf_df = pd.DataFrame(tfidf_matrix.toarray(), columns=feature_names, index=df.index)

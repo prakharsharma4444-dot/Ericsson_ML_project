@@ -242,21 +242,32 @@ def encode_categoricals(df, target_col):
 def add_standard_transforms(df, target_col):
     """
     Adds sqrt and log1p versions of every non-negative numeric feature.
-    Lets downstream feature selection decide whether the raw, sqrt, or log
-    version of a feature carries the most signal — without needing to know
-    in advance whether a relationship is linear, sqrt-shaped, or log-shaped.
+
+    Creates transformed columns in a separate DataFrame and concatenates
+    them once at the end to avoid DataFrame fragmentation.
     """
     numeric_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
     numeric_cols = [c for c in numeric_cols if c != target_col]
 
+    transformed_features = {}
     added_cols = []
+
     for col in numeric_cols:
         if (df[col] >= 0).all():
             sqrt_col = f"{col}_sqrt"
             log_col = f"{col}_log"
-            df[sqrt_col] = np.sqrt(df[col])
-            df[log_col] = np.log1p(df[col])
+
+            transformed_features[sqrt_col] = np.sqrt(df[col])
+            transformed_features[log_col] = np.log1p(df[col])
+
             added_cols.extend([sqrt_col, log_col])
+
+    if transformed_features:
+        transformed_df = pd.DataFrame(
+            transformed_features,
+            index=df.index
+        )
+        df = pd.concat([df, transformed_df], axis=1)
 
     if added_cols:
         print(f"Added transformed features: {added_cols}")
@@ -597,7 +608,7 @@ def train_and_evaluate(models, X_train_scaled, y_train, X_test_scaled, y_test, p
             y_pred_eval = y_pred
             y_test_eval = y_test
 
-        metrics = evaluate_model(y_test_eval, y_pred_eval, problem_type, show_confusion_matrix=False)
+        metrics = evaluate_model(y_test_eval, y_pred_eval, problem_type, show_confusion_matrix=True)
         metrics["model"] = name
         all_results.append(metrics)
         trained_models[name] = model

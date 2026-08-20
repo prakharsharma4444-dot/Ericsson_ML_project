@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
@@ -20,6 +20,7 @@ function App() {
   const [analysis, setAnalysis] = useState(null);
   const [selectedModel, setSelectedModel] = useState(null);
   const [loading, setLoading] = useState(false);
+  const trainingInProgress = useRef(false);
   const [error, setError] = useState(null);
   const [sessionId, setSessionId] = useState(null);
   const [prediction, setPrediction] = useState(null);
@@ -216,58 +217,83 @@ function App() {
   };
 
   const handleTargetSelect = async (targetCol, task = null) => {
+    // Prevent accidental double-clicks or duplicate training requests.
+    if (trainingInProgress.current) {
+      return;
+    }
+
+    trainingInProgress.current = true;
     setLoading(true);
     setError(null);
+
     try {
       const result = await trainModel(sessionId, targetCol, task);
-setAnalysis(result);
+      setAnalysis(result);
 
-const recommendedName = result?.recommended_model;
+      // Automatically select the model chosen by cross-validation.
+      const recommendedName = result?.recommended_model;
 
-if (recommendedName && Array.isArray(result?.results)) {
-  const recommendedModel = result.results.find(
-    (model) => model.model === recommendedName
-  );
+      if (recommendedName && Array.isArray(result?.results)) {
+        const recommendedModel = result.results.find(
+          (model) => model.model === recommendedName
+        );
 
-  if (recommendedModel) {
-    setSelectedModel(recommendedModel);
-    setPrediction(null);
-    setFeatureImportance(null);
+        if (recommendedModel) {
+          setSelectedModel(recommendedModel);
+          setPrediction(null);
+          setFeatureImportance(null);
 
-    try {
-      const fi = await getFeatureImportance(
-        sessionId,
-        recommendedName
+          try {
+            const fi = await getFeatureImportance(
+              sessionId,
+              recommendedName
+            );
+
+            if (fi.supported) {
+              setFeatureImportance(fi.importances);
+            }
+          } catch (err) {
+            // Feature importance is optional; model selection should still succeed.
+            console.error(
+              'Failed to load recommended model feature importance:',
+              err
+            );
+          }
+        }
+      }
+
+      const activeFile = uploadedFiles.find(
+        (f) => f.id === activeFileId
       );
 
-      if (fi.supported) {
-        setFeatureImportance(fi.importances);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  }
-}
-      const activeFile = uploadedFiles.find(f => f.id === activeFileId);
       const newRun = {
         id: `RUN-${Date.now().toString().slice(-6)}`,
         dataset: activeFile?.name || 'Dataset.csv',
         target: targetCol || 'Auto Target',
         model:
-  result?.recommended_model ||
-  result?.problem_type ||
-  'Trained Model',
-        accuracy: result?.metrics?.accuracy ? `${(result.metrics.accuracy * 100).toFixed(1)}%` : 'Completed',
+          result?.recommended_model ||
+          result?.problem_type ||
+          'Trained Model',
+        accuracy: result?.metrics?.accuracy
+          ? `${(result.metrics.accuracy * 100).toFixed(1)}%`
+          : 'Completed',
         date: new Date().toLocaleString(),
         status: 'Completed',
       };
 
-      const existingHistory = JSON.parse(localStorage.getItem('ml_history') || '[]');
-      localStorage.setItem('ml_history', JSON.stringify([newRun, ...existingHistory]));
+      const existingHistory = JSON.parse(
+        localStorage.getItem('ml_history') || '[]'
+      );
+
+      localStorage.setItem(
+        'ml_history',
+        JSON.stringify([newRun, ...existingHistory])
+      );
     } catch (err) {
       console.error(err);
       setError(err.message);
     } finally {
+      trainingInProgress.current = false;
       setLoading(false);
     }
   };
