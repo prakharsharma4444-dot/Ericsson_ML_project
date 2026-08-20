@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import StatCard from './StatCard';
+import NeedsAttention from './NeedsAttention';
 
 const PRIORITY_COLORS = { Overdue: '#DC2626', Pending: '#2563EB', Closed: '#16A34A', Open: '#3B82F6' };
 
@@ -71,7 +72,6 @@ function Dashboard({
   onClearSearch,
   onExportReport,
   onMakePrediction,
-  // Filters now come from App.jsx (shared with TopBar's filter dropdown)
   startDate = '',
   endDate = '',
   selectedSeverities = [],
@@ -96,8 +96,6 @@ function Dashboard({
   const safeRecent = Array.isArray(recentCases) && recentCases.length > 0 ? recentCases : defaultRecent;
   const safeAttention = Array.isArray(attentionCases) && attentionCases.length > 0 ? attentionCases : defaultAttention;
 
-  // Comprehensive Global Filter Predicate — logic unchanged, just reads
-  // filter values from props instead of local state now.
   const matchesFilters = (item) => {
     if (searchQuery && searchQuery.trim()) {
       const term = searchQuery.toLowerCase().trim();
@@ -141,8 +139,6 @@ function Dashboard({
 
   const hasActiveFilters = searchQuery || startDate || endDate || selectedSeverities.length > 0 || selectedRegions.length > 0 || selectedTeams.length > 0;
 
-  // Short human-readable summary of what's currently applied, for the
-  // slim banner below (replaces the old full-width filter panel).
   const activeFilterLabels = [
     ...(startDate || endDate ? [`Date: ${startDate || '…'} to ${endDate || '…'}`] : []),
     ...selectedSeverities,
@@ -166,7 +162,6 @@ function Dashboard({
         </button>
       </div>
 
-      {/* Slim active-filters summary — the full filter UI now lives in the TopBar dropdown */}
       {hasActiveFilters && (
         <div className="flex items-center justify-between flex-wrap gap-2 bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/60 rounded-xl px-4 py-2.5 text-xs text-blue-900 dark:text-blue-200">
           <div className="flex items-center gap-2 flex-wrap">
@@ -289,51 +284,7 @@ function Dashboard({
           )}
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <AlertCircle size={16} className="text-red-500 dark:text-red-400" />
-              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Needs Attention (Filtered)</h3>
-            </div>
-            {filteredAttention.length > 0 && (
-              <span className="text-[11px] font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/50 px-2 py-0.5 rounded-full">
-                {filteredAttention.length} Urgent
-              </span>
-            )}
-          </div>
-
-          {filteredAttention.length === 0 ? (
-            <div className="py-10 text-center space-y-2">
-              <SearchX size={28} className="mx-auto text-slate-300 dark:text-slate-600" />
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">No urgent tickets match your filter.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filteredAttention.map((c, i) => (
-                <div
-                  key={c.caseId || i}
-                  onClick={() => setSelectedCaseModal(c)}
-                  className="flex items-center justify-between text-xs p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 cursor-pointer transition group"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold text-blue-600 dark:text-blue-400 group-hover:underline">#{c.caseId}</p>
-                      {c.region && (
-                        <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-1.5 py-0.2 rounded font-medium">
-                          {c.region}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-red-500 dark:text-red-400 mt-0.5 font-medium">{c.issue}</p>
-                  </div>
-                  <span className="text-slate-400 dark:text-slate-500 text-[11px] group-hover:text-blue-600 dark:group-hover:text-blue-400 font-medium">
-                    View Raw Info &rarr;
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <NeedsAttention cases={filteredAttention} onSelectCase={setSelectedCaseModal} />
       </div>
 
       <div className="flex justify-center pt-2">

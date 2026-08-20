@@ -152,7 +152,7 @@ def prepare_ticket_data(df_raw, task):
     if task == "resolution":
         drop_cols.add("priority")
         drop_cols.add("target_solution_hours")
-
+        
     drop_cols = {c for c in drop_cols if c in df.columns and c != target_col}
     df = df.drop(columns=list(drop_cols))
 
