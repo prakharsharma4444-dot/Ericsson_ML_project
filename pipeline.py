@@ -10,11 +10,13 @@ automatically based on what's detected in the data.
 import numpy as np
 import pandas as pd
 import joblib
-from sklearn.feature_selection import mutual_info_regression
-from sklearn.model_selection import train_test_split, cross_val_score, KFold
+from sklearn.feature_selection import mutual_info_regression, mutual_info_classif
+from sklearn.model_selection import train_test_split, cross_val_score, KFold, StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, RobustScaler, StandardScaler
 from sklearn.linear_model import LogisticRegression, Ridge, HuberRegressor
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import balanced_accuracy_score
 from sklearn.ensemble import (
     RandomForestClassifier,
     RandomForestRegressor,
@@ -202,9 +204,6 @@ def clean_data(df, target_col=None):
         report["actions_taken"].append(f"Dropped ID columns: {id_cols}")
 
     # --- Impute missing values in numeric feature columns ---
-    # Models like Ridge and SVR can't handle NaNs natively, so any numeric
-    # feature nulls need to be filled before training. Median is used since
-    # it's robust to outliers (consistent with the outlier-aware scaler choice below).
     feature_cols = [c for c in df.columns if c != target_col]
     numeric_feature_cols = df[feature_cols].select_dtypes(include=["int64", "float64"]).columns.tolist()
     numeric_nulls = df[numeric_feature_cols].isnull().sum()
@@ -281,21 +280,34 @@ def select_informative_features(df, target_col, n_permutations=10, random_state=
 
     rng = np.random.RandomState(random_state)
 
-    real_mi = mutual_info_regression(df[numeric_cols], df[target_col], random_state=random_state)
+    # Detect whether target is categorical or regression and format target vector accordingly
+    problem_type = detect_problem_type(df[target_col])
+
+    if problem_type == "classification":
+        mi_func = mutual_info_classif
+        if not pd.api.types.is_numeric_dtype(df[target_col]):
+            le = LabelEncoder()
+            y_target = le.fit_transform(df[target_col].astype(str))
+        else:
+            y_target = df[target_col]
+    else:
+        mi_func = mutual_info_regression
+        y_target = df[target_col]
+
+    real_mi = mi_func(df[numeric_cols], y_target, random_state=random_state)
     mi_series = pd.Series(real_mi, index=numeric_cols)
 
-    # More permutations = a more stable noise threshold, less sensitive to luck.
+    # Permutation noise thresholding
     noise_scores = []
     for _ in range(n_permutations):
         shuffled = df[numeric_cols].apply(lambda col: rng.permutation(col.values))
         noise_scores.append(
-            mutual_info_regression(shuffled, df[target_col], random_state=random_state)
+            mi_func(shuffled, y_target, random_state=random_state)
         )
     noise_scores = np.array(noise_scores)
     noise_threshold = noise_scores.mean() + 0.5 * noise_scores.std()
 
-    # Group each column with its transformed siblings (e.g. age_years,
-    # age_years_sqrt, age_years_log all belong to the "age_years" family).
+    # Group transformed sibling variants
     families = {}
     for col in numeric_cols:
         base = col
@@ -471,10 +483,8 @@ def choose_scaler(outlier_summary, total_features):
 
 def build_cv_pipelines(models, scaler):
     """
-    Wraps each model together with a *fresh clone* of the given scaler type,
+    Wraps each model together with a fresh clone of the given scaler type,
     so every CV fold fits its own scaler on that fold's training data only.
-    Prevents scaling leakage across folds (fitting on data the fold hasn't
-    "seen" yet), the same class of bug as the earlier target-leakage issue.
     """
     from sklearn.base import clone
     return {name: Pipeline([("scaler", clone(scaler)), ("model", model)]) for name, model in models.items()}
@@ -483,20 +493,27 @@ def build_cv_pipelines(models, scaler):
 def cross_validate_models(models, X, y, problem_type, was_log_transformed=False, cv_folds=5):
     """
     Runs k-fold cross-validation for each model, reporting mean and std R²
-    (or accuracy, for classification) across folds -- a more trustworthy
-    signal than a single train/test split, especially on smaller datasets
-    or when comparing small changes (e.g. feature selection tweaks) where
-    a single split's noise can be bigger than the effect being measured.
-
-    Note: `models` should already be wrapped via build_cv_pipelines() so
-    scaling happens per-fold, not on the whole dataset beforehand.
+    (or accuracy, for classification) across folds.
     """
-    scoring = "r2" if problem_type == "regression" else "accuracy"
-    kf = KFold(n_splits=cv_folds, shuffle=True, random_state=42)
-
+    if problem_type == "regression":
+        scoring = "r2"
+        cv = KFold(n_splits=cv_folds, shuffle=True, random_state=42)
+    else:
+        scoring = "f1_macro"
+        cv = StratifiedKFold(
+            n_splits=cv_folds,
+            shuffle=True,
+            random_state=42
+            )
     cv_results = []
     for name, pipeline in models.items():
-        scores = cross_val_score(pipeline, X, y, cv=kf, scoring=scoring)
+        scores = cross_val_score(
+                 pipeline,
+                 X,
+                 y,
+                 cv=cv,
+                 scoring=scoring
+)
         cv_results.append({
             "model": name,
             f"cv_{scoring}_mean": scores.mean(),
@@ -541,9 +558,17 @@ def evaluate_model(y_test, y_pred, problem_type="classification", show_confusion
         avg_method = "binary" if is_binary else "weighted"
 
         results["accuracy"] = accuracy_score(y_test, y_pred)
-        results["precision"] = precision_score(y_test, y_pred, average=avg_method, zero_division=0)
-        results["recall"] = recall_score(y_test, y_pred, average=avg_method, zero_division=0)
-        results["f1"] = f1_score(y_test, y_pred, average=avg_method, zero_division=0)
+        results["balanced_accuracy"] = balanced_accuracy_score(
+            y_test, y_pred)
+        results["precision"] = precision_score(
+            y_test,
+            y_pred,
+            average="weighted",
+            zero_division=0)
+        results["recall"] = recall_score(
+            y_test,y_pred,average="weighted",zero_division=0)
+        results["f1"] = f1_score(y_test,y_pred, average="weighted",zero_division=0)
+        results["f1_macro"] = f1_score(y_test,y_pred,average="macro",zero_division=0)
 
         if show_confusion_matrix:
             print("Confusion Matrix:")
@@ -584,12 +609,18 @@ def train_and_evaluate(models, X_train_scaled, y_train, X_test_scaled, y_test, p
 def recommend_model(results_df, trained_models, problem_type, priority=None):
     """Selects the top-performing model based on priority metric."""
     if priority is None:
-        priority = "f1" if problem_type == "classification" else "r2"
-
+        priority = "f1_macro"
     valid_priorities = {
-        "classification": ["accuracy", "precision", "recall", "f1"],
-        "regression": ["mae", "rmse", "r2"],
-    }
+     "classification": [
+        "accuracy",
+        "balanced_accuracy",
+        "precision",
+        "recall",
+        "f1",
+        "f1_macro",
+    ],
+    "regression": ["mae", "rmse", "r2"],
+}
 
     if priority not in valid_priorities[problem_type]:
         raise ValueError(f"For {problem_type}, priority must be one of {valid_priorities[problem_type]}")
@@ -645,8 +676,6 @@ def predict_single(model, scaler, sample_dict, feature_columns, was_log_transfor
     """Executes single-sample inference and aligns unseen or missing feature columns."""
     sample_df = pd.DataFrame([sample_dict])
 
-    # Recreate any sqrt/log engineered columns the pipeline added during
-    # training, so the sample lands in the same feature space as the model.
     for col in feature_columns:
         if col in sample_df.columns:
             continue

@@ -91,8 +91,19 @@ export async function predictSample(sessionId, modelName, sample) {
 }
 
 export async function getFeatureImportance(sessionId, modelName) {
-  const res = await fetch(`${getApiBase()}/api/sessions/${sessionId}/feature-importance/${modelName}`);
-  if (!res.ok) throw new Error(`getFeatureImportance failed (${res.status})`);
+  const encodedModelName = encodeURIComponent(modelName);
+
+  const res = await fetch(
+    `${getApiBase()}/api/sessions/${sessionId}/feature-importance/${encodedModelName}`
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(
+      `getFeatureImportance failed (${res.status}): ${text}`
+    );
+  }
+
   return res.json();
 }
 
@@ -163,25 +174,6 @@ export async function downloadModel(sessionId, modelName) {
   window.URL.revokeObjectURL(url);
 }
 
-export const fetchDashboardStats = async (filters) => {
-  const queryParams = new URLSearchParams();
 
-  if (filters.start_date) queryParams.append('start_date', filters.start_date);
-  if (filters.end_date) queryParams.append('end_date', filters.end_date);
-  
-  // Append arrays for severity, region, and team
-  ['severity', 'region', 'team'].forEach(key => {
-    if (filters[key] && filters[key].length > 0) {
-      filters[key].forEach(val => queryParams.append(key, val));
-    }
-  });
 
-  try {
-    const response = await fetch(`http://localhost:8000/api/dashboard/stats?${queryParams.toString()}`);
-    if (!response.ok) throw new Error('Network response was not ok');
-    return await response.json();
-  } catch (error) {
-    console.error("Error fetching dashboard stats:", error);
-    return null;
-  }
-};
+ 

@@ -220,14 +220,43 @@ function App() {
     setError(null);
     try {
       const result = await trainModel(sessionId, targetCol, task);
-      setAnalysis(result);
+setAnalysis(result);
 
+const recommendedName = result?.recommended_model;
+
+if (recommendedName && Array.isArray(result?.results)) {
+  const recommendedModel = result.results.find(
+    (model) => model.model === recommendedName
+  );
+
+  if (recommendedModel) {
+    setSelectedModel(recommendedModel);
+    setPrediction(null);
+    setFeatureImportance(null);
+
+    try {
+      const fi = await getFeatureImportance(
+        sessionId,
+        recommendedName
+      );
+
+      if (fi.supported) {
+        setFeatureImportance(fi.importances);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+}
       const activeFile = uploadedFiles.find(f => f.id === activeFileId);
       const newRun = {
         id: `RUN-${Date.now().toString().slice(-6)}`,
         dataset: activeFile?.name || 'Dataset.csv',
         target: targetCol || 'Auto Target',
-        model: result?.best_model || result?.problem_type || 'Trained Model',
+        model:
+  result?.recommended_model ||
+  result?.problem_type ||
+  'Trained Model',
         accuracy: result?.metrics?.accuracy ? `${(result.metrics.accuracy * 100).toFixed(1)}%` : 'Completed',
         date: new Date().toLocaleString(),
         status: 'Completed',
@@ -497,6 +526,9 @@ function App() {
                       setFeatureImportance(null);
                     }}
                     theme={theme}
+                      cvResults={analysis.cv_results || []}
+  recommendedModel={analysis.recommended_model}
+  selectedModel={selectedModel}
                   />
 
                   {selectedModel && (
@@ -507,19 +539,97 @@ function App() {
                         loading={loading}
                         theme={theme}
                       />
-                      {prediction && (
-                        <div className={`p-6 rounded-xl shadow-sm border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
-                          <h3 className="text-lg font-semibold mb-2">Prediction Result</h3>
-                          <p className="text-2xl font-bold text-blue-600">
-                            {prediction.predicted_class ?? prediction.prediction}
-                          </p>
-                          {prediction.confidence && (
-                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                              Confidence: {(prediction.confidence * 100).toFixed(1)}%
-                            </p>
-                          )}
-                        </div>
-                      )}
+                     {prediction && (
+  <div
+    className={`p-6 rounded-xl shadow-sm border ${
+      theme === 'dark'
+        ? 'bg-slate-800 border-slate-700'
+        : 'bg-white border-slate-100'
+    }`}
+  >
+    <h3
+      className={`text-lg font-semibold mb-2 ${
+        theme === 'dark' ? 'text-slate-100' : 'text-slate-800'
+      }`}
+    >
+      Prediction Result
+    </h3>
+
+    <p className="text-2xl font-bold text-blue-600">
+      {prediction.predicted_class ?? prediction.prediction}
+    </p>
+
+    {prediction.confidence !== undefined && (
+      <p
+        className={`text-sm mt-1 ${
+          theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
+        }`}
+      >
+        Confidence: {(prediction.confidence * 100).toFixed(1)}%
+      </p>
+    )}
+
+    {prediction.class_probabilities &&
+      prediction.class_labels &&
+      prediction.class_probabilities.length === prediction.class_labels.length && (
+        <div className="mt-5">
+          <p
+            className={`text-sm font-semibold mb-3 ${
+              theme === 'dark' ? 'text-slate-200' : 'text-slate-700'
+            }`}
+          >
+            Prediction Breakdown
+          </p>
+
+          <div className="space-y-3">
+            {prediction.class_labels.map((label, index) => {
+              const probability =
+                prediction.class_probabilities[index] * 100;
+
+              return (
+                <div key={label}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span
+                      className={`font-medium ${
+                        theme === 'dark'
+                          ? 'text-slate-300'
+                          : 'text-slate-600'
+                      }`}
+                    >
+                      {label}
+                    </span>
+
+                    <span
+                      className={
+                        theme === 'dark'
+                          ? 'text-slate-400'
+                          : 'text-slate-500'
+                      }
+                    >
+                      {probability.toFixed(1)}%
+                    </span>
+                  </div>
+
+                  <div
+                    className={`w-full h-2 rounded-full overflow-hidden ${
+                      theme === 'dark'
+                        ? 'bg-slate-700'
+                        : 'bg-slate-200'
+                    }`}
+                  >
+                    <div
+                      className="h-full rounded-full bg-blue-600 transition-all duration-500"
+                      style={{ width: `${probability}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+  </div>
+)}
                     </>
                   )}
                 </div>

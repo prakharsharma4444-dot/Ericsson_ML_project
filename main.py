@@ -9,7 +9,6 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Query
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
-from dashboard_stats import filter_support_tickets
 from pydantic import BaseModel
 
 from jsonsafe import to_jsonable
@@ -64,9 +63,9 @@ class ValidateRequest(BaseModel):
 class TrainRequest(BaseModel):
     target_col: Optional[str] = None
     priority: Optional[str] = None
-    task: Optional[str] = None  # "priority" | "resolution" | "owner" — for Ericsson ticket data
-
-
+    task: Optional[str] = None
+    test_size: Optional[float] = None
+    
 class PredictRequest(BaseModel):
     model_name: str
     sample: Dict[str, Any]
@@ -349,29 +348,6 @@ def preview(session_id: str, rows: Optional[int] = None):
         "column_stats": to_jsonable(column_stats),
         "alerts": alerts,
     }
-@app.get("/api/dashboard/stats")
-def get_dashboard_stats(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    severity: Optional[List[str]] = Query(None),
-    region: Optional[List[str]] = Query(None),
-    team: Optional[List[str]] = Query(None)
-):
-    filters = {
-        "start_date": start_date,
-        "end_date": end_date,
-        "severity": severity,
-        "region": region,
-        "team": team
-    }
-    
-    # Slice your master df (assuming df is loaded globally or via dependency)
-    filtered_df = filter_support_tickets(df, filters)
-    
-    return {
-        "total_tickets": len(filtered_df),
-        # Add your specific SLA metrics and chart data aggregations here
-    }
 
 
 @app.get("/api/sessions/{session_id}/columns/{column_name}")
@@ -539,8 +515,10 @@ def train(session_id: str, req: TrainRequest):
 
     df = encode_categoricals(df, target_col_final)
 
+    # Deterministic feature transforms do not use the target and can be
+    # generated before the split. Target-dependent feature selection happens
+    # only on the training set below to prevent test-set leakage.
     df, added_transform_cols = add_standard_transforms(df, target_col_final)
-    df, dropped_low_signal_cols = select_informative_features(df, target_col_final)
 
     imbalance_counts = None
     label_classes = None
@@ -551,8 +529,6 @@ def train(session_id: str, req: TrainRequest):
             label_classes = sorted(df[target_col_final].dropna().unique().tolist())
         df = encode_target(df, target_col_final)
 
-    outlier_summary = check_outliers(df, target_col_final)
-
     drop_cols = [c for c in (target_col, target_col_final) if c in df.columns]
     X = df.drop(columns=drop_cols)
     y = df[target_col_final]
@@ -560,29 +536,116 @@ def train(session_id: str, req: TrainRequest):
     if len(X.columns) == 0:
         raise HTTPException(400, "No feature columns left after cleaning. Try a different target.")
 
-    X_train, X_test, y_train, y_test = split_data(X, y)
-    scaler = choose_scaler(outlier_summary, total_features=X.shape[1])
+    test_size = req.test_size if req.test_size is not None else 0.2
+
+    if not 0.1 <= test_size <= 0.5:
+        raise HTTPException(
+            400,
+            "test_size must be between 0.1 and 0.5."
+        )
+
+    # Split before any target-dependent feature selection so the held-out
+    # test set does not influence which features are retained.
+    X_train, X_test, y_train, y_test = split_data(
+        X, y, test_size=test_size
+    )
+
+    # Mutual-information feature selection is target-dependent, so fit it
+    # using training data only.
+    train_selection_df = X_train.copy()
+    train_selection_df[target_col_final] = y_train
+
+    train_selection_df, dropped_low_signal_cols = select_informative_features(
+        train_selection_df,
+        target_col_final
+    )
+
+    X_train = train_selection_df.drop(columns=[target_col_final])
+    y_train = train_selection_df[target_col_final]
+
+    # Apply the exact feature set selected from training to the test set.
+    X_test = X_test.reindex(
+        columns=X_train.columns,
+        fill_value=0
+    )
+
+    # Outlier analysis is used to choose the scaler, so it must also be
+    # computed from training data only.
+    outlier_df = X_train.copy()
+    outlier_df[target_col_final] = y_train
+    outlier_summary = check_outliers(
+        outlier_df,
+        target_col_final
+    )
+
+    scaler = choose_scaler(
+        outlier_summary,
+        total_features=X_train.shape[1]
+    )
+
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
     models = get_default_models(problem_type)
 
-    # Stage 2: cross-validation, for a more trustworthy signal than a
-    # single train/test split. Uses the full X/y (not X_train/X_test) --
-    # each fold scales its own training data internally via the pipeline.
+    # Cross-validation is performed on the training set only. Each CV fold
+    # fits its own scaler inside the pipeline, preventing preprocessing
+    # leakage between CV folds.
     cv_pipelines = build_cv_pipelines(models, scaler)
-    cv_results_df = cross_validate_models(cv_pipelines, X, y, problem_type, was_log)
+    cv_results_df = cross_validate_models(
+        cv_pipelines,
+        X_train,
+        y_train,
+        problem_type,
+        was_log
+    )
 
     results_df, trained_models = train_and_evaluate(
-        models, X_train_scaled, y_train, X_test_scaled, y_test, problem_type, was_log
+        models,
+        X_train_scaled,
+        y_train,
+        X_test_scaled,
+        y_test,
+        problem_type,
+        was_log
     )
-    try:
-        best_model = recommend_model(results_df, trained_models, problem_type, priority=req.priority)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    if req.priority is None:
+        cv_metric = "cv_f1_macro_mean" if problem_type == "classification" else "cv_r2_mean"
+        best_cv_row = cv_results_df.sort_values(
+            cv_metric,
+            ascending=False
+        ).iloc[0]
 
-    recommended_name = next(name for name, m in trained_models.items() if m is best_model)
-    top_features = rank_top_features(best_model, session_feature_columns := X_train.columns.tolist(), plain_feature_cols, text_derived_cols)
+        recommended_name = best_cv_row["model"]
+        best_model = trained_models[recommended_name]
+
+        print(
+            f"Recommended model based on cross-validation "
+            f"'{cv_metric}': {recommended_name}"
+        )
+    else:
+        try:
+            best_model = recommend_model(
+                results_df,
+                trained_models,
+                problem_type,
+                priority=req.priority
+            )
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+        recommended_name = next(
+            name for name, m in trained_models.items()
+            if m is best_model
+        )
+
+    session_feature_columns = X_train.columns.tolist()
+    top_features = rank_top_features(
+        best_model,
+        session_feature_columns,
+        plain_feature_cols,
+        text_derived_cols
+    )
 
     session.target_col = target_col
     session.problem_type = problem_type
@@ -618,6 +681,7 @@ def train(session_id: str, req: TrainRequest):
         "feature_columns": session.feature_columns,
         "original_feature_info": original_feature_info,
         "top_features": top_features,
+        "test_size": test_size,
     })
 
 
