@@ -144,12 +144,52 @@ def build_feature_defaults(df, plain_cols, text_derived_cols):
     return defaults
 
 
-def build_predict_form_fields(df, plain_cols, has_text_derived):
-    fields = build_feature_info(df, plain_cols)
-    if has_text_derived:
-        fields = [{"name": TEXT_DERIVED_VIRTUAL_NAME, "is_numeric": False, "is_text": True}] + fields
-    return fields
+PRODUCT_VIRTUAL_NAME = "product"
 
+
+def build_predict_form_fields(df, plain_cols, has_text_derived):
+    # Hide engineered product one-hot columns from the user.
+    product_cols = [
+        c for c in plain_cols
+        if str(c).lower().startswith("prod_")
+    ]
+
+    visible_cols = [
+        c for c in plain_cols
+        if c not in product_cols
+        and c not in {"target_solution_hours", "resolution_hours"}
+    ]
+
+    fields = build_feature_info(df, visible_cols)
+
+    if product_cols:
+        product_options = [
+            c[len("prod_"):]
+            for c in product_cols
+            if c[len("prod_"):].strip()
+        ]
+
+        fields.insert(
+            0,
+            {
+                "name": PRODUCT_VIRTUAL_NAME,
+                "is_numeric": False,
+                "is_text": False,
+                "options": sorted(set(product_options)),
+            },
+        )
+
+    if has_text_derived:
+        fields.insert(
+            0,
+            {
+                "name": TEXT_DERIVED_VIRTUAL_NAME,
+                "is_numeric": False,
+                "is_text": True,
+            },
+        )
+
+    return fields
 
 def rank_top_features(model, feature_columns, plain_cols, text_derived_cols):
     importances = get_feature_importance(model, feature_columns)
@@ -727,23 +767,71 @@ def dashboard_summary(session_id: str):
 @app.post("/api/sessions/{session_id}/predict")
 def predict(session_id: str, req: PredictRequest):
     session = get_session_or_404(session_id)
-    model = session.trained_models.get(req.model_name)
-    if model is None:
-        raise HTTPException(404, f"No trained model named '{req.model_name}'.")
 
-    full_sample = dict(getattr(session, "original_feature_defaults", None) or {})
+    model = session.trained_models.get(req.model_name)
+
+    if model is None:
+        raise HTTPException(
+            404,
+            f"No trained model named '{req.model_name}'."
+        )
+
+    full_sample = dict(
+        getattr(session, "original_feature_defaults", None) or {}
+    )
 
     user_sample = dict(req.sample)
-    case_description = user_sample.pop(TEXT_DERIVED_VIRTUAL_NAME, None)
+
+    case_description = user_sample.pop(
+        TEXT_DERIVED_VIRTUAL_NAME,
+        None,
+    )
+
+    selected_product = user_sample.pop(
+        PRODUCT_VIRTUAL_NAME,
+        None,
+    )
+
     full_sample.update(user_sample)
 
-    if case_description and getattr(session, "tfidf_vectorizer", None) is not None:
+    if selected_product:
+        product_prefix = "prod_"
+
+        for col in session.original_feature_defaults.keys():
+            if str(col).lower().startswith(product_prefix):
+                full_sample[col] = (
+                    1.0
+                    if str(col).lower()
+                    == f"{product_prefix}{str(selected_product).lower()}"
+                    else 0.0
+                )
+
+    if case_description and getattr(
+        session,
+        "tfidf_vectorizer",
+        None
+    ) is not None:
+
         vectorizer = session.tfidf_vectorizer
-        vec = vectorizer.transform([str(case_description).lower()])
-        tfidf_names = [f"tfidf_{w}" for w in vectorizer.get_feature_names_out()]
-        for name, val in zip(tfidf_names, vec.toarray()[0]):
+
+        vec = vectorizer.transform(
+            [str(case_description).lower()]
+        )
+
+        tfidf_names = [
+            f"tfidf_{w}"
+            for w in vectorizer.get_feature_names_out()
+        ]
+
+        for name, val in zip(
+            tfidf_names,
+            vec.toarray()[0]
+        ):
             full_sample[name] = float(val)
-        full_sample["text_negativity_score"] = get_negativity_score(case_description)
+
+        full_sample["text_negativity_score"] = (
+            get_negativity_score(case_description)
+        )
 
     sample_df = pd.DataFrame([full_sample])
 

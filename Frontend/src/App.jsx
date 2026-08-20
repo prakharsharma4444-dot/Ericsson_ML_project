@@ -564,6 +564,7 @@ function App() {
                         onPredict={handlePredict}
                         loading={loading}
                         theme={theme}
+                        task={analysis?.task || analysis?.prediction_task}
                       />
                      {prediction && (
   <div
