@@ -1,4 +1,4 @@
-import { ArrowLeft, Info, Rows3, Columns3, Hash, Trophy } from 'lucide-react';
+import { ArrowLeft, Info, Rows3, Columns3, Hash, Trophy, CheckCircle2 } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -40,7 +40,7 @@ function PipelineResults({
   selectedModel = null,
   onSelectModel,
   onBack,
-})  {
+}) {
   const isClassification = problemType === 'classification';
 
   const getCvResult = (modelName) =>
@@ -52,11 +52,19 @@ function PipelineResults({
     return {
       model: r.model,
       primary: isClassification ? r.f1_macro : r.r2 ?? r.r2_score,
-      secondary: isClassification
-        ? cv?.cv_f1_macro_mean
-        : r.mae,
+      secondary: isClassification ? cv?.cv_f1_macro_mean : cv?.cv_r2_mean,
     };
   });
+
+  const formatPercentage = (value) => {
+    if (value == null || Number.isNaN(Number(value))) return '—';
+    return `${(Number(value) * 100).toFixed(1)}%`;
+  };
+
+  const formatErrorHours = (value) => {
+    if (value == null || Number.isNaN(Number(value))) return '—';
+    return `${Number(value).toFixed(1)} h`;
+  };
 
   return (
     <div className="space-y-6">
@@ -78,17 +86,11 @@ function PipelineResults({
           <div className="w-9 h-9 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center">
             <Trophy size={18} className="text-green-600 dark:text-green-400" />
           </div>
-
           <div>
-            <p className="text-xs font-medium text-green-700 dark:text-green-300">
-              Recommended Model
-            </p>
-            <p className="text-base font-bold text-green-800 dark:text-green-200">
-              {recommendedModel}
-            </p>
+            <p className="text-xs font-medium text-green-700 dark:text-green-300">Recommended Model</p>
+            <p className="text-base font-bold text-green-800 dark:text-green-200">{recommendedModel}</p>
             <p className="text-[11px] text-green-600 dark:text-green-400 mt-0.5">
-              Selected using cross-validation{' '}
-              {isClassification ? 'Macro F1' : 'R²'}.
+              Selected using cross-validation {isClassification ? 'Macro F1' : 'R²'}.
             </p>
           </div>
         </div>
@@ -97,89 +99,78 @@ function PipelineResults({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Problem Type
-            </p>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Problem Type</p>
             <div className="w-7 h-7 rounded-full bg-blue-50 dark:bg-blue-950/50 flex items-center justify-center">
               <Hash size={14} className="text-blue-600 dark:text-blue-400" />
             </div>
           </div>
-
-          <p className="text-lg font-bold text-slate-800 dark:text-slate-100 uppercase">
-            {problemType}
-          </p>
+          <p className="text-lg font-bold text-slate-800 dark:text-slate-100 uppercase">{problemType}</p>
         </div>
 
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Initial Shape
-            </p>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Initial Shape</p>
             <div className="w-7 h-7 rounded-full bg-purple-50 dark:bg-purple-950/50 flex items-center justify-center">
               <Rows3 size={14} className="text-purple-600 dark:text-purple-400" />
             </div>
           </div>
-
-          <p className="text-lg font-bold text-slate-800 dark:text-slate-100">
-            {initialShape}
-          </p>
+          <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{initialShape}</p>
         </div>
 
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Final Shape
-            </p>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Final Shape</p>
             <div className="w-7 h-7 rounded-full bg-green-50 dark:bg-green-950/50 flex items-center justify-center">
               <Columns3 size={14} className="text-green-600 dark:text-green-400" />
             </div>
           </div>
-
-          <p className="text-lg font-bold text-slate-800 dark:text-slate-100">
-            {finalShape}
-          </p>
+          <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{finalShape}</p>
         </div>
       </div>
 
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
-        <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 mb-4">
-          Model Performance
-        </h3>
-        {selectedModel && (
-  <div className="mb-4 flex items-center justify-between rounded-lg border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/30 px-4 py-3">
-    <div>
-      <p className="text-xs font-medium text-blue-600 dark:text-blue-400">
-        Currently Selected Model
-      </p>
-      <p className="text-sm font-bold text-blue-800 dark:text-blue-200">
-        {selectedModel.model}
-      </p>
-    </div>
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">Model Performance</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Compare held-out performance and cross-validation consistency before choosing a model.
+            </p>
+          </div>
+        </div>
 
-    <span className="px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-[10px] font-semibold">
-      Ready for Prediction
-    </span>
-  </div>
-)}
+        {selectedModel && (
+          <div className="mb-4 flex items-center justify-between gap-4 rounded-lg border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/30 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+                <CheckCircle2 size={16} className="text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-blue-600 dark:text-blue-400">Currently Selected Model</p>
+                <p className="text-sm font-bold text-blue-800 dark:text-blue-200">{selectedModel.model}</p>
+              </div>
+            </div>
+            <span className="px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-[10px] font-semibold whitespace-nowrap">
+              Ready for Prediction
+            </span>
+          </div>
+        )}
 
         <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/60 rounded-lg p-3 mb-5">
           <Info size={16} className="text-blue-500 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-
           <p className="text-xs text-blue-800 dark:text-blue-200">
-            <span className="font-semibold">Model Overview: </span>
-            The held-out test metrics show final model performance, while
-            cross-validation Macro F1 shows how consistently each classifier
-            performs across multiple training folds.
+            <span className="font-semibold">How to read this table: </span>
+            {isClassification
+              ? 'Test metrics show final held-out performance. CV Macro F1 shows how consistently each classifier performed across training folds.'
+              : 'R² measures explained variance. MAE and RMSE are errors in the target units, while CV R² shows how consistently the model performs across training folds.'}
           </p>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[1100px]">
             <thead>
               <tr className="text-left text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
                 <th className="pb-2.5 font-medium">Model</th>
                 <th className="pb-2.5 font-medium">Description</th>
-
                 {isClassification ? (
                   <>
                     <th className="pb-2.5 font-medium">Accuracy</th>
@@ -198,7 +189,6 @@ function PipelineResults({
                     <th className="pb-2.5 font-medium">CV R²</th>
                   </>
                 )}
-
                 <th className="pb-2.5 font-medium text-right">Action</th>
               </tr>
             </thead>
@@ -211,19 +201,18 @@ function PipelineResults({
 
                 return (
                   <tr
-  key={r.model}
-  className={`border-b last:border-0 align-top ${
-    isSelected
-      ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900/60'
-      : isRecommended
-        ? 'bg-green-50/70 dark:bg-green-950/20 border-green-100 dark:border-green-900/40'
-        : 'border-slate-50 dark:border-slate-800/60'
-  }`}
->
+                    key={r.model}
+                    className={`border-b last:border-0 align-top transition-colors ${
+                      isSelected
+                        ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900/60'
+                        : isRecommended
+                          ? 'bg-green-50/70 dark:bg-green-950/20 border-green-100 dark:border-green-900/40'
+                          : 'border-slate-50 dark:border-slate-800/60 hover:bg-slate-50/70 dark:hover:bg-slate-800/30'
+                    }`}
+                  >
                     <td className="py-3.5 font-semibold text-slate-800 dark:text-slate-100 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         {r.model}
-
                         {isRecommended && (
                           <span className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 text-[10px] font-semibold">
                             Recommended
@@ -233,70 +222,36 @@ function PipelineResults({
                     </td>
 
                     <td className="py-3.5 text-slate-500 dark:text-slate-400 text-xs max-w-xs pr-4">
-                      {MODEL_DESCRIPTIONS[r.model] ||
-                        'A machine learning model trained on this dataset.'}
+                      {MODEL_DESCRIPTIONS[r.model] || 'A machine learning model trained on this dataset.'}
                     </td>
 
                     {isClassification ? (
                       <>
-                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">
-                          {(r.accuracy * 100).toFixed(2)}%
-                        </td>
-
-                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">
-                          {(r.balanced_accuracy * 100).toFixed(2)}%
-                        </td>
-
-                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">
-                          {(r.precision * 100).toFixed(2)}%
-                        </td>
-
-                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">
-                          {(r.recall * 100).toFixed(2)}%
-                        </td>
-
-                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">
-                          {(r.f1 * 100).toFixed(2)}%
-                        </td>
-
-                        <td className="py-3.5 font-semibold text-blue-600 dark:text-blue-400">
-                          {(r.f1_macro * 100).toFixed(2)}%
-                        </td>
-
+                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{formatPercentage(r.accuracy)}</td>
+                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{formatPercentage(r.balanced_accuracy)}</td>
+                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{formatPercentage(r.precision)}</td>
+                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{formatPercentage(r.recall)}</td>
+                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{formatPercentage(r.f1)}</td>
+                        <td className="py-3.5 font-semibold text-blue-600 dark:text-blue-400">{formatPercentage(r.f1_macro)}</td>
                         <td className="py-3.5 font-semibold text-purple-600 dark:text-purple-400">
-                          {cv?.cv_f1_macro_mean != null
-                            ? `${(cv.cv_f1_macro_mean * 100).toFixed(2)}%`
-                            : '—'}
-
+                          {formatPercentage(cv?.cv_f1_macro_mean)}
                           {cv?.cv_f1_macro_std != null && (
                             <span className="block text-[10px] font-normal text-slate-400 dark:text-slate-500 mt-0.5">
-                              ± {(cv.cv_f1_macro_std * 100).toFixed(2)}%
+                              ± {formatPercentage(cv.cv_f1_macro_std)}
                             </span>
                           )}
                         </td>
                       </>
                     ) : (
                       <>
-                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">
-                          {((r.r2 ?? r.r2_score) * 100).toFixed(2)}%
-                        </td>
-
-                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">
-                          {r.mae?.toFixed(0)}
-                        </td>
-
-                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">
-                          {r.rmse?.toFixed(0)}
-                        </td>
-
+                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{formatPercentage(r.r2 ?? r.r2_score)}</td>
+                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{formatErrorHours(r.mae)}</td>
+                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{formatErrorHours(r.rmse)}</td>
                         <td className="py-3.5 font-semibold text-purple-600 dark:text-purple-400">
-                          {cv?.cv_r2_mean != null
-                            ? `${(cv.cv_r2_mean * 100).toFixed(2)}%`
-                            : '—'}
-
+                          {formatPercentage(cv?.cv_r2_mean)}
                           {cv?.cv_r2_std != null && (
                             <span className="block text-[10px] font-normal text-slate-400 dark:text-slate-500 mt-0.5">
-                              ± {(cv.cv_r2_std * 100).toFixed(2)}%
+                              ± {formatPercentage(cv.cv_r2_std)}
                             </span>
                           )}
                         </td>
@@ -305,27 +260,24 @@ function PipelineResults({
 
                     <td className="py-3.5 text-right">
                       <button
-  onClick={() =>
-    onSelectModel &&
-    onSelectModel({
-      ...r,
-      isRecommended,
-    })
-  }
-  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-    isSelected
-      ? 'bg-blue-600 hover:bg-blue-700 text-white'
-      : isRecommended
-        ? 'bg-green-600 hover:bg-green-700 text-white'
-        : 'bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 dark:hover:bg-blue-600 text-slate-700 dark:text-slate-200 hover:text-white dark:hover:text-white'
-  }`}
->
-  {isSelected
-    ? 'Selected'
-    : isRecommended
-      ? 'Use Recommended'
-      : 'Select Model'}
-</button>
+                        type="button"
+                        onClick={() =>
+                          onSelectModel &&
+                          onSelectModel({
+                            ...r,
+                            isRecommended,
+                          })
+                        }
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                          isSelected
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                            : isRecommended
+                              ? 'bg-green-600 hover:bg-green-700 text-white'
+                              : 'bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 dark:hover:bg-blue-600 text-slate-700 dark:text-slate-200 hover:text-white dark:hover:text-white'
+                        }`}
+                      >
+                        {isSelected ? '✓ Selected' : isRecommended ? 'Use Recommended' : 'Select Model'}
+                      </button>
                     </td>
                   </tr>
                 );
@@ -333,32 +285,34 @@ function PipelineResults({
             </tbody>
           </table>
         </div>
+
+        {selectedModel && (
+          <div className="mt-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-4">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-blue-600 dark:text-blue-400" />
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                {selectedModel.model} is ready for the prediction form.
+              </p>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 ml-6">
+              You can change the model at any time before generating the final prediction.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
-        <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">
-          Model Visual Comparison
-        </h3>
-
+        <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">Model Visual Comparison</h3>
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
           {isClassification
-            ? 'Comparing held-out Macro F1 with cross-validation Macro F1'
-            : 'Comparing held-out R² with cross-validation R²'}
+            ? 'Held-out Macro F1 vs cross-validation Macro F1'
+            : 'Held-out R² vs cross-validation R²'}
         </p>
 
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={chartData}
-              margin={{ top: 10, right: 20, left: 0, bottom: 20 }}
-            >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                vertical={false}
-                stroke="#94A3B8"
-                strokeOpacity={0.2}
-              />
-
+            <BarChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 40 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#94A3B8" strokeOpacity={0.2} />
               <XAxis
                 dataKey="model"
                 tick={{ fontSize: 10, fill: '#94A3B8' }}
@@ -366,26 +320,24 @@ function PipelineResults({
                 angle={-15}
                 textAnchor="end"
               />
-
               <YAxis
                 tick={{ fontSize: 11, fill: '#94A3B8' }}
+                tickFormatter={(value) => `${Math.round(Number(value) * 100)}%`}
               />
-
               <Tooltip
+                formatter={(value, name) => [formatPercentage(value), name]}
                 contentStyle={{
                   borderRadius: '8px',
                   border: 'none',
                   boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
                 }}
               />
-
               <Bar
                 dataKey="primary"
                 name={isClassification ? 'Test Macro F1' : 'Test R²'}
                 fill="#CBD5E1"
                 radius={[3, 3, 0, 0]}
               />
-
               <Bar
                 dataKey="secondary"
                 name={isClassification ? 'CV Macro F1' : 'CV R²'}
@@ -396,6 +348,22 @@ function PipelineResults({
           </ResponsiveContainer>
         </div>
       </div>
+
+      {isClassification ? (
+        <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+          <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">What should you focus on?</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-5">
+            Macro F1 gives every class equal importance, which is useful when the ticket priorities are not perfectly balanced. CV Macro F1 helps you judge whether a model's performance is stable across different training folds.
+          </p>
+        </div>
+      ) : (
+        <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+          <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">How to interpret the regression metrics</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-5">
+            R² shows how much variation in the target is explained by the model. MAE is the average absolute prediction error, expressed in the same units as the target. For resolution-time prediction, MAE is therefore directly interpretable as typical error in hours.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
