@@ -43,8 +43,35 @@ function PipelineResults({
 }) {
   const isClassification = problemType === 'classification';
 
+  const getModelName = (model) => {
+    if (typeof model === 'string') return model;
+    return model?.model || model?.name || null;
+  };
+
+  const resolvedSelectedModelName = getModelName(selectedModel);
+  const backendRecommendedModelName = getModelName(recommendedModel);
+
+  const derivedRecommendedModelName =
+    backendRecommendedModelName ||
+    (Array.isArray(cvResults) && cvResults.length > 0
+      ? [...cvResults]
+          .filter((item) => item?.model)
+          .sort((a, b) => {
+            const aScore = Number(
+              isClassification ? a?.cv_f1_macro_mean : a?.cv_r2_mean
+            );
+            const bScore = Number(
+              isClassification ? b?.cv_f1_macro_mean : b?.cv_r2_mean
+            );
+
+            if (!Number.isFinite(aScore)) return 1;
+            if (!Number.isFinite(bScore)) return -1;
+            return bScore - aScore;
+          })[0]?.model || null
+      : null);
+
   const getCvResult = (modelName) =>
-    cvResults.find((item) => item.model === modelName);
+    cvResults.find((item) => getModelName(item) === modelName);
 
   const chartData = results.map((r) => {
     const cv = getCvResult(r.model);
@@ -81,18 +108,48 @@ function PipelineResults({
         </h2>
       </div>
 
-      {recommendedModel && (
-        <div className="flex items-center gap-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900/60 rounded-xl p-4">
-          <div className="w-9 h-9 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center">
-            <Trophy size={18} className="text-green-600 dark:text-green-400" />
+      {derivedRecommendedModelName && (
+        <div className="flex items-center justify-between gap-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900/60 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center">
+              <Trophy size={18} className="text-green-600 dark:text-green-400" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-green-700 dark:text-green-300">
+                Recommended Model
+              </p>
+              <p className="text-base font-bold text-green-800 dark:text-green-200">
+                {derivedRecommendedModelName}
+              </p>
+              <p className="text-[11px] text-green-600 dark:text-green-400 mt-0.5">
+                {backendRecommendedModelName
+                  ? `Selected using cross-validation ${isClassification ? 'Macro F1' : 'R²'}.`
+                  : `Recommended from the best available cross-validation ${isClassification ? 'Macro F1' : 'R²'}.`}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs font-medium text-green-700 dark:text-green-300">Recommended Model</p>
-            <p className="text-base font-bold text-green-800 dark:text-green-200">{recommendedModel}</p>
-            <p className="text-[11px] text-green-600 dark:text-green-400 mt-0.5">
-              Selected using cross-validation {isClassification ? 'Macro F1' : 'R²'}.
-            </p>
-          </div>
+
+          {resolvedSelectedModelName !== derivedRecommendedModelName && (
+            <button
+              type="button"
+              onClick={() => {
+                const recommendedRow = results.find(
+                  (row) => row.model === derivedRecommendedModelName
+                );
+
+                if (recommendedRow && onSelectModel) {
+                  onSelectModel({
+                    ...recommendedRow,
+                    model: recommendedRow.model,
+                    isRecommended: true,
+                  });
+                }
+              }}
+              className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-semibold transition whitespace-nowrap"
+            >
+              Use Recommended
+            </button>
+          )}
         </div>
       )}
 
@@ -146,7 +203,7 @@ function PipelineResults({
               </div>
               <div>
                 <p className="text-xs font-medium text-blue-600 dark:text-blue-400">Currently Selected Model</p>
-                <p className="text-sm font-bold text-blue-800 dark:text-blue-200">{selectedModel.model}</p>
+                <p className="text-sm font-bold text-blue-800 dark:text-blue-200">{resolvedSelectedModelName}</p>
               </div>
             </div>
             <span className="px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-[10px] font-semibold whitespace-nowrap">
@@ -196,8 +253,8 @@ function PipelineResults({
             <tbody>
               {results.map((r) => {
                 const cv = getCvResult(r.model);
-                const isRecommended = recommendedModel === r.model;
-                const isSelected = selectedModel?.model === r.model;
+                const isRecommended = derivedRecommendedModelName === r.model;
+                const isSelected = resolvedSelectedModelName === r.model;
 
                 return (
                   <tr
@@ -265,6 +322,7 @@ function PipelineResults({
                           onSelectModel &&
                           onSelectModel({
                             ...r,
+                            model: r.model,
                             isRecommended,
                           })
                         }
@@ -291,7 +349,7 @@ function PipelineResults({
             <div className="flex items-center gap-2">
               <CheckCircle2 size={16} className="text-blue-600 dark:text-blue-400" />
               <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                {selectedModel.model} is ready for the prediction form.
+                {resolvedSelectedModelName} is ready for the prediction form.
               </p>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 ml-6">

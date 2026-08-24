@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
@@ -20,7 +20,6 @@ function App() {
   const [analysis, setAnalysis] = useState(null);
   const [selectedModel, setSelectedModel] = useState(null);
   const [loading, setLoading] = useState(false);
-  const trainingInProgress = useRef(false);
   const [error, setError] = useState(null);
   const [sessionId, setSessionId] = useState(null);
   const [prediction, setPrediction] = useState(null);
@@ -217,98 +216,113 @@ function App() {
   };
 
   const handleTargetSelect = async (targetCol, task = null) => {
-    // Prevent accidental double-clicks or duplicate training requests.
-    if (trainingInProgress.current) {
-      return;
-    }
-
-    trainingInProgress.current = true;
     setLoading(true);
     setError(null);
-
     try {
+
       const result = await trainModel(sessionId, targetCol, task);
       setAnalysis(result);
+      
 
-      // Automatically select the model chosen by cross-validation.
-      const recommendedName = result?.recommended_model;
+      const activeFile = uploadedFiles.find(f => f.id === activeFileId);
 
-      if (recommendedName && Array.isArray(result?.results)) {
-        const recommendedModel = result.results.find(
-          (model) => model.model === recommendedName
-        );
+      const problemType = result?.problem_type || result?.problemType || 'unknown';
+      const recommendedModelName =
+        result?.recommended_model ||
+        result?.best_model ||
+        'Trained Model';
 
-        if (recommendedModel) {
-          setSelectedModel(recommendedModel);
-          setPrediction(null);
-          setFeatureImportance(null);
+      const modelRows = Array.isArray(result?.results) ? result.results : [];
+      const cvRows = Array.isArray(result?.cv_results) ? result.cv_results : [];
 
-          try {
-            const fi = await getFeatureImportance(
-              sessionId,
-              recommendedName
-            );
+      const selectedResult = modelRows.find(
+        row => row?.model === recommendedModelName
+      ) || {};
 
-            if (fi.supported) {
-              setFeatureImportance(fi.importances);
-            }
-          } catch (err) {
-            // Feature importance is optional; model selection should still succeed.
-            console.error(
-              'Failed to load recommended model feature importance:',
-              err
-            );
-          }
-        }
-      }
+      const selectedCvResult = cvRows.find(
+        row => row?.model === recommendedModelName
+      ) || {};
 
-      const activeFile = uploadedFiles.find(
-        (f) => f.id === activeFileId
-      );
+      const isClassification = problemType === 'classification';
+
+      const testMetricValue = isClassification
+        ? (
+            selectedResult?.f1_macro ??
+            selectedResult?.f1 ??
+            selectedResult?.accuracy ??
+            null
+          )
+        : (
+            selectedResult?.r2 ??
+            selectedResult?.R2 ??
+            null
+          );
+
+      const cvMetricValue = isClassification
+        ? (
+            selectedCvResult?.cv_f1_macro_mean ??
+            selectedCvResult?.f1_macro ??
+            null
+          )
+        : (
+            selectedCvResult?.cv_r2_mean ??
+            selectedCvResult?.r2 ??
+            null
+          );
+
+      const metricName = isClassification
+        ? 'Macro F1'
+        : 'R²';
+
+      const formatMetric = (value) =>
+        typeof value === 'number' && Number.isFinite(value)
+          ? `${(value * 100).toFixed(1)}%`
+          : 'N/A';
 
       const newRun = {
         id: `RUN-${Date.now().toString().slice(-6)}`,
         dataset: activeFile?.name || 'Dataset.csv',
-        target: targetCol || 'Auto Target',
-        model:
-          result?.recommended_model ||
-          result?.problem_type ||
-          'Trained Model',
-        accuracy: result?.metrics?.accuracy
-          ? `${(result.metrics.accuracy * 100).toFixed(1)}%`
-          : 'Completed',
+        target: targetCol || result?.target_col || 'Auto Target',
+        task: task || null,
+        problemType,
+        model: recommendedModelName,
+        metricName,
+        metricValue: formatMetric(testMetricValue),
+        cvMetricName: `CV ${metricName}`,
+        cvMetricValue: formatMetric(cvMetricValue),
+        accuracy: formatMetric(
+          selectedResult?.accuracy
+        ),
         date: new Date().toLocaleString(),
         status: 'Completed',
       };
 
-      const existingHistory = JSON.parse(
-        localStorage.getItem('ml_history') || '[]'
-      );
-
-      localStorage.setItem(
-        'ml_history',
-        JSON.stringify([newRun, ...existingHistory])
-      );
+      const existingHistory = JSON.parse(localStorage.getItem('ml_history') || '[]');
+      localStorage.setItem('ml_history', JSON.stringify([newRun, ...existingHistory]));
     } catch (err) {
       console.error(err);
       setError(err.message);
     } finally {
-      trainingInProgress.current = false;
       setLoading(false);
     }
   };
 
   const handleSelectModel = async (item) => {
+
     setSelectedModel(item);
     setPrediction(null);
     setFeatureImportance(null);
+
     try {
-      const fi = await getFeatureImportance(sessionId, item.model);
-      if (fi.supported) {
-        setFeatureImportance(fi.importances);
+      if (sessionId && item?.model) {
+        const fi = await getFeatureImportance(sessionId, item.model);
+
+        if (fi.supported) {
+          setFeatureImportance(fi.importances);
+        }
       }
     } catch (err) {
-      console.error(err);
+      console.error('Feature importance fetch failed:', err);
     }
   };
 
@@ -544,6 +558,9 @@ function App() {
                     initialShape={`${analysis.clean_report?.initial_shape?.[0] ?? analysis.initial_shape?.[0] ?? 'N/A'} × ${analysis.clean_report?.initial_shape?.[1] ?? analysis.initial_shape?.[1] ?? 'N/A'}`}
                     finalShape={`${analysis.clean_report?.final_shape?.[0] ?? analysis.final_shape?.[0] ?? 'N/A'} × ${analysis.clean_report?.final_shape?.[1] ?? analysis.final_shape?.[1] ?? 'N/A'}`}
                     results={analysis.results || modelsList}
+                    cvResults={analysis.cv_results || []}
+                    recommendedModel={analysis.recommended_model}
+                    selectedModel={selectedModel}
                     onSelectModel={handleSelectModel}
                     onBack={() => {
                       setAnalysis(null);
@@ -552,9 +569,6 @@ function App() {
                       setFeatureImportance(null);
                     }}
                     theme={theme}
-                      cvResults={analysis.cv_results || []}
-  recommendedModel={analysis.recommended_model}
-  selectedModel={selectedModel}
                   />
 
                   {selectedModel && (
@@ -564,7 +578,6 @@ function App() {
                         onPredict={handlePredict}
                         loading={loading}
                         theme={theme}
-                        task={analysis?.task || analysis?.prediction_task}
                       />
                      {prediction && (
   <div

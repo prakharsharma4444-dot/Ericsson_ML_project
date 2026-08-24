@@ -19,7 +19,12 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import StatCard from './StatCard';
 import NeedsAttention from './NeedsAttention';
 
-const PRIORITY_COLORS = { Overdue: '#DC2626', Pending: '#2563EB', Closed: '#16A34A', Open: '#3B82F6' };
+const PRIORITY_COLORS = {
+  Critical: '#DC2626',
+  High: '#F97316',
+  Medium: '#EAB308',
+  Low: '#22C55E',
+};
 
 const defaultSummary = {
   openCases: 142, openCasesTrend: -12,
