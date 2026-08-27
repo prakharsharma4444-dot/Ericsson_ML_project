@@ -108,7 +108,7 @@ const [sheetLoading, setSheetLoading] = useState(false);
           setDashboardLoading(false);
         });
     }
-  }, [activeNav, sessionId]);
+  }, [activeNav, sessionId, activeSheet]);
 
   const handleNewAnalysis = () => {
     setActiveFileId(null);
@@ -177,11 +177,12 @@ setActiveSheet(data.activeSheet || null);
   setError(null);
 
   // Reset everything tied to the previous sheet.
-  setExplored(false);
-  setAnalysis(null);
-  setSelectedModel(null);
-  setPrediction(null);
-  setFeatureImportance(null);
+setExplored(false);
+setAnalysis(null);
+setSelectedModel(null);
+setPrediction(null);
+setFeatureImportance(null);
+setDashboardData(null);
 
   try {
     const data = await selectSheet(sessionId, sheetName);
@@ -611,6 +612,7 @@ setActiveSheet(data.activeSheet || null);
 
               {activeFileId && columns && !explored && !analysis && (
                 <DataExploreScreen
+                key={`${sessionId}-${activeSheet}`}
                   sessionId={sessionId}
                   columns={columns}
                   onContinue={() => setExplored(true)}
