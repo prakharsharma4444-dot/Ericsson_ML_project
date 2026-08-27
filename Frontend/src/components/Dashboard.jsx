@@ -34,13 +34,10 @@ const defaultSummary = {
 };
 
 const defaultStatusData = [
-  { day: 'Sat', thisWeek: 320, lastWeek: 210 },
-  { day: 'Sun', thisWeek: 250, lastWeek: 180 },
-  { day: 'Mon', thisWeek: 280, lastWeek: 200 },
-  { day: 'Tue', thisWeek: 340, lastWeek: 380 },
-  { day: 'Wed', thisWeek: 160, lastWeek: 230 },
-  { day: 'Thu', thisWeek: 300, lastWeek: 240 },
-  { day: 'Fri', thisWeek: 280, lastWeek: 260 },
+  { name: 'Closed', value: 90 },
+  { name: 'Open', value: 60 },
+  { name: 'Pending', value: 25 },
+  { name: 'Escalated', value: 10 },
 ];
 
 const defaultPriorityData = [
@@ -203,13 +200,42 @@ function Dashboard({
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-4">Case Status Breakdown</h3>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={safeStatusData} barGap={2}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#94A3B8" strokeOpacity={0.2} />
-                <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Bar dataKey="lastWeek" name="Last week" fill="#CBD5E1" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="thisWeek" name="This week" fill="#2563EB" radius={[3, 3, 0, 0]} />
+              <BarChart
+                data={safeStatusData}
+                margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#94A3B8"
+                  strokeOpacity={0.2}
+                />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 11, fill: '#94A3B8' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: '#94A3B8' }}
+                  axisLine={false}
+                  tickLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  formatter={(value) => [`${value} cases`, 'Cases']}
+                  contentStyle={{
+                    borderRadius: '8px',
+                    border: 'none',
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                  }}
+                />
+                <Bar
+                  dataKey="value"
+                  name="Cases"
+                  fill="#2563EB"
+                  radius={[4, 4, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
