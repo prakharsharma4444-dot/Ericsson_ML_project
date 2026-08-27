@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import UploadCard from './components/UploadCard';
 import Dashboard from './components/Dashboard';
+import GenericDashboard from './components/GenericDashboard';
 import HistoryScreen from './components/HistoryScreen';
 import SettingsScreen from './components/SettingsScreen';
 import { getColumns, trainModel, predictSample, getFeatureImportance, getDashboardSummary, mergeDatasets } from './api';
@@ -394,7 +395,15 @@ function App() {
           {activeNav === 'Dashboard' && (
             <>
               {dashboardLoading ? (
-                <div className="text-center py-16 text-slate-500 dark:text-slate-400 text-xs font-medium">Loading dashboard overview...</div>
+                <div className="text-center py-16 text-slate-500 dark:text-slate-400 text-xs font-medium">
+                  Loading dashboard overview...
+                </div>
+              ) : dashboardData?.datasetType === 'generic' ? (
+                <GenericDashboard
+                  data={dashboardData?.generic}
+                  onExplore={() => setActiveNav('Upload Data')}
+                  onPredict={handleMakePrediction}
+                />
               ) : (
                 <Dashboard
                   summary={dashboardData?.summary}

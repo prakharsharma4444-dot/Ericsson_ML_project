@@ -1,5 +1,5 @@
 // Dynamic getter for configured FastAPI Server URL
-const getApiBase = () => {
+export const getApiBase = () => {
   const settings = JSON.parse(localStorage.getItem('app_settings') || '{}');
   return settings.apiUrl || 'http://localhost:8000';
 };
