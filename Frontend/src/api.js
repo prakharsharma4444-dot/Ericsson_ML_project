@@ -11,12 +11,52 @@ export async function getColumns(file) {
   if (!res.ok) throw new Error(`Upload failed (${res.status})`);
   const data = await res.json();
   
-  return {
+    return {
     sessionId: data.session_id,
-    columns: Array.isArray(data.columns) 
-      ? data.columns.map(c => (typeof c === 'object' && c !== null ? c.name : c)) 
-      : []
+    columns: Array.isArray(data.columns)
+      ? data.columns.map(c => (
+          typeof c === 'object' && c !== null ? c.name : c
+        ))
+      : [],
+    filename: data.filename,
+    activeSheet: data.active_sheet || null,
+    sheets: Array.isArray(data.sheets) ? data.sheets : [],
   };
+}
+export async function getSheets(sessionId) {
+  const res = await fetch(
+    `${getApiBase()}/api/sessions/${sessionId}/sheets`
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`getSheets failed (${res.status}): ${text}`);
+  }
+
+  return res.json();
+}
+
+
+export async function selectSheet(sessionId, sheetName) {
+  const res = await fetch(
+    `${getApiBase()}/api/sessions/${sessionId}/sheet`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sheet_name: sheetName,
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`selectSheet failed (${res.status}): ${text}`);
+  }
+
+  return res.json();
 }
 export async function mergeDatasets(fileA, fileB, mode = 'concat') {
   const formData = new FormData();

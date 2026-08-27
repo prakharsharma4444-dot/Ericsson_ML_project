@@ -76,6 +76,10 @@ class PivotRequest(BaseModel):
     num_col: str
     agg_func: str  # 'mean', 'sum', 'count', 'min', 'max'
 
+
+class SheetSelectRequest(BaseModel):
+    sheet_name: str
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -88,6 +92,12 @@ def get_session_or_404(session_id: str) -> Session:
 
 
 def read_uploaded_file(filename: str, content: bytes) -> pd.DataFrame:
+    """
+    Read a single dataset from an uploaded file.
+
+    This helper is intentionally kept for operations such as the existing
+    two-file merge endpoint, where each input should resolve to one DataFrame.
+    """
     lower = filename.lower()
     try:
         if lower.endswith(".csv"):
@@ -102,6 +112,52 @@ def read_uploaded_file(filename: str, content: bytes) -> pd.DataFrame:
         raise
     except Exception as e:
         raise HTTPException(400, f"Could not read '{filename}': {e}")
+
+
+def read_uploaded_sheets(
+    filename: str,
+    content: bytes,
+) -> Dict[str, pd.DataFrame]:
+    """
+    Read an uploaded file as one or more named datasets.
+
+    CSV files are represented as a single logical sheet named "Sheet1".
+    Excel workbooks load all worksheets.
+    """
+    lower = filename.lower()
+
+    try:
+        if lower.endswith(".csv"):
+            return {
+                "Sheet1": pd.read_csv(io.BytesIO(content))
+            }
+
+        if lower.endswith(".xlsx"):
+            return pd.read_excel(
+                io.BytesIO(content),
+                sheet_name=None,
+                engine="openpyxl",
+            )
+
+        if lower.endswith(".xls"):
+            return pd.read_excel(
+                io.BytesIO(content),
+                sheet_name=None,
+                engine="xlrd",
+            )
+
+        raise HTTPException(
+            400,
+            "Please upload a .csv, .xlsx, or .xls file."
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            400,
+            f"Could not read '{filename}': {e}"
+        )
 
 
 def build_feature_info(df: pd.DataFrame, cols):
@@ -270,20 +326,137 @@ async def upload(file: UploadFile = File(...)):
         raise HTTPException(400, "Please upload a .csv, .xlsx, or .xls file.")
 
     content = await file.read()
-    df = read_uploaded_file(file.filename, content)
+    sheets = read_uploaded_sheets(file.filename, content)
 
-    if df.shape[1] == 0:
-        raise HTTPException(400, "That file has no columns.")
+    if not sheets:
+        raise HTTPException(
+            400,
+            "The uploaded workbook contains no worksheets."
+        )
+
+    # Ignore completely empty worksheets so the user cannot accidentally
+    # select a blank tab and break downstream analysis.
+    non_empty_sheets = {
+        str(name): df
+        for name, df in sheets.items()
+        if df is not None and not df.empty
+    }
+
+    if not non_empty_sheets:
+        raise HTTPException(
+            400,
+            "The uploaded workbook contains no non-empty worksheets."
+        )
+
+    # Make sure every sheet has at least one column.
+    invalid_sheets = [
+        name
+        for name, df in non_empty_sheets.items()
+        if df.shape[1] == 0
+    ]
+    if invalid_sheets:
+        # Keep useful sheets and simply ignore structurally empty ones.
+        non_empty_sheets = {
+            name: df
+            for name, df in non_empty_sheets.items()
+            if df.shape[1] > 0
+        }
+
+    if not non_empty_sheets:
+        raise HTTPException(
+            400,
+            "The uploaded workbook contains no usable worksheets."
+        )
 
     session_id = create_session()
     session = get_session(session_id)
-    session.df_raw = df
+
+    session.file_name = file.filename
+    session.sheets = non_empty_sheets
+
+    # First usable sheet becomes the initial active dataset.
+    session.active_sheet = next(iter(non_empty_sheets))
+    session.df_raw = non_empty_sheets[session.active_sheet]
+
+    active_df = session.df_raw
 
     return {
         "session_id": session_id,
         "filename": file.filename,
-        "n_rows": len(df),
-        "n_cols": len(df.columns),
+        "active_sheet": session.active_sheet,
+        "sheets": [
+            {
+                "name": str(name),
+                "n_rows": int(len(df)),
+                "n_cols": int(len(df.columns)),
+            }
+            for name, df in non_empty_sheets.items()
+        ],
+        "n_rows": len(active_df),
+        "n_cols": len(active_df.columns),
+        "columns": to_jsonable(get_column_info(active_df)),
+    }
+
+
+@app.get("/api/sessions/{session_id}/sheets")
+def get_sheets(session_id: str):
+    session = get_session_or_404(session_id)
+
+    return {
+        "filename": session.file_name,
+        "active_sheet": session.active_sheet,
+        "sheets": [
+            {
+                "name": str(name),
+                "n_rows": int(len(df)),
+                "n_cols": int(len(df.columns)),
+            }
+            for name, df in session.sheets.items()
+        ],
+    }
+
+
+@app.post("/api/sessions/{session_id}/sheet")
+def select_sheet(session_id: str, req: SheetSelectRequest):
+    session = get_session_or_404(session_id)
+
+    if req.sheet_name not in session.sheets:
+        raise HTTPException(
+            404,
+            f"Worksheet '{req.sheet_name}' was not found in this workbook."
+        )
+
+    session.active_sheet = req.sheet_name
+    session.df_raw = session.sheets[req.sheet_name]
+
+    # Any trained model belongs to the previous active sheet and must not be
+    # reused after switching worksheets.
+    session.target_col = None
+    session.problem_type = None
+    session.clean_report = None
+    session.outlier_summary = None
+    session.imbalance_counts = None
+    session.original_feature_info = None
+    session.original_feature_defaults = None
+    session.text_derived_cols = None
+    session.tfidf_vectorizer = None
+    session.categorical_columns = None
+    session.feature_columns = None
+    session.scaler = None
+    session.trained_models = {}
+    session.results = None
+    session.cv_results = None
+    session.recommended_model = None
+    session.top_features = None
+    session.label_classes = None
+
+    df = session.df_raw
+
+    return {
+        "filename": session.file_name,
+        "active_sheet": session.active_sheet,
+        "n_rows": int(len(df)),
+        "n_cols": int(len(df.columns)),
         "columns": to_jsonable(get_column_info(df)),
     }
 
