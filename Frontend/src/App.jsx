@@ -8,7 +8,15 @@ import Dashboard from './components/Dashboard';
 import GenericDashboard from './components/GenericDashboard';
 import HistoryScreen from './components/HistoryScreen';
 import SettingsScreen from './components/SettingsScreen';
-import { getColumns, trainModel, predictSample, getFeatureImportance, getDashboardSummary, mergeDatasets } from './api';
+import {
+  getColumns,
+  trainModel,
+  predictSample,
+  getFeatureImportance,
+  getDashboardSummary,
+  mergeDatasets,
+  selectSheet
+} from './api';
 import PredictionForm from './components/PredictionForm';
 import DataExploreScreen from './components/DataExploreScreen';
 import AIPredictions from './components/AIPredictions';
@@ -39,6 +47,9 @@ function App() {
   const [filterSeverities, setFilterSeverities] = useState([]);
   const [filterRegions, setFilterRegions] = useState([]);
   const [filterTeams, setFilterTeams] = useState([]);
+  const [availableSheets, setAvailableSheets] = useState([]);
+const [activeSheet, setActiveSheet] = useState(null);
+const [sheetLoading, setSheetLoading] = useState(false);
 
   const handleClearAllFilters = () => {
     setFilterStartDate('');
@@ -110,6 +121,7 @@ function App() {
     setFeatureImportance(null);
     setError(null);
     setActiveNav('Upload Data');
+    
   };
 
   const handleFileSelect = async (selectedFiles) => {
@@ -149,6 +161,8 @@ function App() {
       const data = await getColumns(selected.fileData);
       setSessionId(data.sessionId);
       setColumns(data.columns);
+      setAvailableSheets(data.sheets || []);
+setActiveSheet(data.activeSheet || null);
     } catch (err) {
       console.error(err);
       setError(err.message);
@@ -156,6 +170,37 @@ function App() {
       setLoading(false);
     }
   };
+  const handleSheetChange = async (sheetName) => {
+  if (!sessionId || !sheetName || sheetName === activeSheet) return;
+
+  setSheetLoading(true);
+  setError(null);
+
+  // Reset everything tied to the previous sheet.
+  setExplored(false);
+  setAnalysis(null);
+  setSelectedModel(null);
+  setPrediction(null);
+  setFeatureImportance(null);
+
+  try {
+    const data = await selectSheet(sessionId, sheetName);
+
+    setActiveSheet(data.active_sheet);
+    setColumns(
+      Array.isArray(data.columns)
+        ? data.columns.map(c =>
+            typeof c === 'object' && c !== null ? c.name : c
+          )
+        : []
+    );
+  } catch (err) {
+    console.error(err);
+    setError(err.message || 'Failed to switch worksheet.');
+  } finally {
+    setSheetLoading(false);
+  }
+};
 
   // --- Merge feature handlers ---
   const handleToggleMergeMode = () => {
@@ -527,6 +572,42 @@ function App() {
                   </div>
                 </div>
               )}
+              {activeFileId && availableSheets.length > 1 && (
+  <div className="mb-5">
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+      <div>
+        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+          Workbook Sheet
+        </p>
+
+        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+          Choose which worksheet to analyze.
+        </p>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <select
+          value={activeSheet || ''}
+          onChange={(e) => handleSheetChange(e.target.value)}
+          disabled={sheetLoading}
+          className="min-w-[220px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-blue-500"
+        >
+          {availableSheets.map((sheet) => (
+            <option key={sheet.name} value={sheet.name}>
+              {sheet.name} · {sheet.n_rows.toLocaleString()} rows · {sheet.n_cols} cols
+            </option>
+          ))}
+        </select>
+
+        {sheetLoading && (
+          <span className="text-xs text-slate-400">
+            Switching...
+          </span>
+        )}
+      </div>
+    </div>
+  </div>
+)}
 
               {activeFileId && columns && !explored && !analysis && (
                 <DataExploreScreen

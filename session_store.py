@@ -22,6 +22,15 @@ from typing import Any, Dict, List, Optional
 @dataclass
 class Session:
     df_raw: Any = None  # the original uploaded dataframe, untouched
+        # All worksheets in the uploaded workbook.
+    # For CSV files this contains exactly one sheet-like entry.
+    sheets: Dict[str, Any] = field(default_factory=dict)
+
+    # Name of the worksheet currently being analyzed.
+    active_sheet: Optional[str] = None
+
+    # Original uploaded filename.
+    file_name: Optional[str] = None
 
     target_col: Optional[str] = None
     problem_type: Optional[str] = None
