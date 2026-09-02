@@ -1,10 +1,11 @@
-import { LayoutDashboard, Upload, History, Settings, PlusCircle } from 'lucide-react';
+import { LayoutDashboard, Upload, History, Settings, PlusCircle, Sparkles } from 'lucide-react';
 import ericssonLogo from '../assets/ericsson-logo.svg';
 
 const NAV_ITEMS = [
   { name: 'Dashboard', icon: LayoutDashboard },
   { name: 'Upload Data', icon: Upload },
   { name: 'History', icon: History },
+  { name: 'AI Analyst', icon: Sparkles },
   { name: 'Settings', icon: Settings },
 ];
 
