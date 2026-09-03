@@ -15,6 +15,7 @@ from jsonsafe import to_jsonable
 from session_store import Session, create_session, get_session
 from ericsson_prep import prepare_ticket_data, get_negativity_score
 from dashboard_stats import build_dashboard_summary
+from ai_analyst import analyze_question
 from pipeline import (
     validate_inputs,
     get_column_info,
@@ -79,7 +80,8 @@ class PivotRequest(BaseModel):
 
 class SheetSelectRequest(BaseModel):
     sheet_name: str
-
+class AIChatRequest(BaseModel):
+    question: str
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -1204,3 +1206,18 @@ def generate_report(session_id: str):
     """
 
     return HTMLResponse(content=html_content, status_code=200)
+@app.post("/api/sessions/{session_id}/ai/chat")
+def ai_chat(session_id: str, req: AIChatRequest):
+    session = get_session_or_404(session_id)
+
+    try:
+        result = analyze_question(session_id, session.df_raw, req.question)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+    except Exception as e:
+        print(f"AI analyst error: {e}")
+        raise HTTPException(500, f"AI analyst request failed: {e}")
+
+    return to_jsonable(result)
