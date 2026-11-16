@@ -88,7 +88,7 @@ function SectionHeader({ icon: Icon, title, subtitle, right }) {
   );
 }
 
-function GenericDashboard({ data = {}, onExplore, onPredict }) {
+function GenericDashboard({ data = {}, searchQuery = '', onExplore, onPredict }) {
   const overview = data.overview || {};
   const numeric = Array.isArray(data.numericSummary) ? data.numericSummary : [];
   const categorical = Array.isArray(data.categoricalSummary) ? data.categoricalSummary : [];
@@ -103,15 +103,31 @@ function GenericDashboard({ data = {}, onExplore, onPredict }) {
   const identifiers = Array.isArray(data.identifierColumns) ? data.identifierColumns : [];
 
   const [profileQuery, setProfileQuery] = useState('');
+  const globalQuery = searchQuery.trim().toLowerCase();
   const [selectedNumeric, setSelectedNumeric] = useState(numeric[0]?.name || '');
   const [selectedCategory, setSelectedCategory] = useState(categorical[0]?.name || '');
   const [selectedTime, setSelectedTime] = useState(datetime[0]?.name || '');
 
   const filteredProfiles = useMemo(() => {
     const q = profileQuery.trim().toLowerCase();
-    if (!q) return profiles;
-    return profiles.filter((p) => `${p.name} ${p.type}`.toLowerCase().includes(q));
-  }, [profiles, profileQuery]);
+    return profiles.filter((p) => {
+      const haystack = [
+        p.name,
+        p.type,
+        ...(Array.isArray(p.sampleValues) ? p.sampleValues : []),
+      ].join(' ').toLowerCase();
+
+      return (!globalQuery || haystack.includes(globalQuery)) &&
+        (!q || haystack.includes(q));
+    });
+  }, [profiles, profileQuery, globalQuery]);
+
+  const filteredInsights = useMemo(() => {
+    if (!globalQuery) return insights;
+    return insights.filter((item) =>
+      `${item.title} ${item.text}`.toLowerCase().includes(globalQuery)
+    );
+  }, [insights, globalQuery]);
 
   const currentNumeric = numeric.find((n) => n.name === selectedNumeric) || numeric[0];
   const currentCategory = categorical.find((c) => c.name === selectedCategory) || categorical[0];
@@ -128,7 +144,7 @@ function GenericDashboard({ data = {}, onExplore, onPredict }) {
     <div className="space-y-6 pb-8">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <p className="text-xs uppercase tracking-wider font-semibold text-indigo-600 dark:text-indigo-400 mb-1">InsightForge</p>
+          <p className="text-xs uppercase tracking-wider font-semibold text-indigo-600 dark:text-indigo-400 mb-1">SupportIQ</p>
           <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Dataset Insight Workspace</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">A structured view of quality, distributions, relationships, and useful signals in the active dataset.</p>
         </div>
@@ -186,9 +202,9 @@ function GenericDashboard({ data = {}, onExplore, onPredict }) {
 
       <Card className="p-5">
         <SectionHeader icon={Activity} title="Automatic Key Findings" subtitle="Potentially useful observations generated directly from the dataset." />
-        {insights.length ? (
+        {filteredInsights.length ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {insights.map((item, i) => (
+            {filteredInsights.map((item, i) => (
               <div key={`${item.title}-${i}`} className="rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-4">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-blue-500" />
@@ -198,7 +214,7 @@ function GenericDashboard({ data = {}, onExplore, onPredict }) {
               </div>
             ))}
           </div>
-        ) : <Empty text="Not enough information to generate automatic findings." />}
+        ) : <Empty text={globalQuery ? 'No key findings match the current search.' : 'Not enough information to generate automatic findings.'} />}
       </Card>
 
       <Card className="p-5">
