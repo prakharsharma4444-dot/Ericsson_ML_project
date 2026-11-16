@@ -1,4 +1,4 @@
-"""Generic + Ericsson-aware dashboard analytics."""
+"""Support-ticket and generic dashboard analytics."""
 
 import math
 import re
@@ -380,7 +380,7 @@ def _extract_raw_case_info(row):
         "desc": str(row.get("desc", "N/A")),
         "product": str(row.get("product", "N/A")),
     }
-def _ericsson_summary(df):
+def _support_ticket_summary(df):
     if "date open" in df.columns:
         open_dates = pd.to_datetime(df["date open"], errors="coerce")
     else:
@@ -459,7 +459,7 @@ def build_dashboard_summary(df_raw, recent_n=5, attention_n=5):
     df = _parse_dates(df)
 
     if _is_support_ticket_dataset(df):
-        result = _ericsson_summary(df)
+        result = _support_ticket_summary(df)
         result["datasetType"] = "support_ticket"
         result["datasetLabel"] = "Support Ticket Operations"
         return result
