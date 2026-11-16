@@ -16,6 +16,18 @@ from session_store import Session, create_session, get_session
 from support_ticket_prep import prepare_ticket_data, get_negativity_score
 from ai_analyst import analyze_question
 from dashboard_stats import build_dashboard_summary
+from adaptive_pipeline import (
+    clean_adaptive_data,
+    infer_feature_types,
+    engineer_adaptive_features,
+    build_adaptive_pipelines,
+    cross_validate_adaptive,
+    train_adaptive_models,
+    recommend_adaptive_model,
+    adaptive_feature_names,
+    get_adaptive_feature_importance,
+    predict_adaptive_single,
+)
 from pipeline import (
     validate_inputs,
     get_column_info,
@@ -166,16 +178,32 @@ def read_uploaded_sheets(
 
 def build_feature_info(df: pd.DataFrame, cols):
     info = []
+    feature_meta = infer_feature_types(df[cols]) if cols else {
+        "numeric": [], "categorical": [], "datetime": [], "text": [], "transform_candidates": []
+    }
+
+    datetime_cols = set(feature_meta.get("datetime", []))
+    text_cols = set(feature_meta.get("text", []))
+
     for col in cols:
         is_numeric = pd.api.types.is_numeric_dtype(df[col])
-        entry = {"name": col, "is_numeric": is_numeric}
+        entry = {
+            "name": col,
+            "is_numeric": is_numeric,
+            "is_datetime": col in datetime_cols,
+            "is_text": col in text_cols,
+        }
+
         if is_numeric:
             entry["min"] = float(df[col].min()) if not pd.isna(df[col].min()) else None
             entry["max"] = float(df[col].max()) if not pd.isna(df[col].max()) else None
             entry["mean"] = float(df[col].mean()) if not pd.isna(df[col].mean()) else None
+        elif col in datetime_cols or col in text_cols:
+            entry["options"] = []
         else:
             options = df[col].dropna().unique().tolist()
             entry["options"] = [str(o) for o in options[:50]]
+
         info.append(entry)
     return info
 
@@ -252,23 +280,26 @@ def build_predict_form_fields(df, plain_cols, has_text_derived):
     return fields
 
 def rank_top_features(model, feature_columns, plain_cols, text_derived_cols):
-    importances = get_feature_importance(model, feature_columns)
+    importances = get_adaptive_feature_importance(model)
     if not importances:
         return []
 
-    text_derived_set = set(text_derived_cols)
-    agg = {}
+    ranked = []
     for encoded_col, score in importances:
-        if encoded_col in text_derived_set:
+        parent = encoded_col
+        for plain in plain_cols:
+            if encoded_col == plain or encoded_col.startswith(f"{plain}_"):
+                parent = plain
+                break
+        if encoded_col.startswith("text_negativity_score") or encoded_col.startswith("case_description"):
             parent = TEXT_DERIVED_VIRTUAL_NAME
-        else:
-            parent = next(
-                (c for c in plain_cols if encoded_col == c or encoded_col.startswith(c + "_")),
-                encoded_col,
-            )
-        agg[parent] = agg.get(parent, 0.0) + float(score)
+        ranked.append((parent, float(score)))
 
-    return sorted(agg, key=agg.get, reverse=True)
+    aggregated = {}
+    for parent, score in ranked:
+        aggregated[parent] = aggregated.get(parent, 0.0) + score
+
+    return sorted(aggregated.items(), key=lambda item: item[1], reverse=True)
 
 
 def generate_column_stats(df):
