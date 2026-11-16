@@ -51,9 +51,17 @@ class Session:
     feature_columns: Optional[List[str]] = None
 
     scaler: Any = None
+    adaptive_metadata: Optional[dict] = None
+    adaptive_summary: Optional[dict] = None
     trained_models: Dict[str, Any] = field(default_factory=dict)
     results: Optional[list] = None
+    cv_results: Optional[list] = None
     recommended_model: Optional[str] = None
+    original_feature_defaults: Optional[dict] = None
+    original_feature_info: Optional[List[dict]] = None
+    text_derived_cols: Optional[List[str]] = None
+    tfidf_vectorizer: Any = None
+    top_features: Optional[list] = None
 
     # If the target was a text label (e.g. "M"/"B"), this holds the
     # sorted class names so predictions can be mapped back from index.
