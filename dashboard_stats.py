@@ -5,7 +5,7 @@ import re
 import numpy as np
 import pandas as pd
 from scipy.stats import chi2_contingency
-from ericsson_prep import _normalize_columns, _parse_dates
+from support_ticket_prep import _normalize_columns, _parse_dates
 
 STATUS_BUCKET_RULES = [
     (("closed", "resolved", "completed", "finished"), "Closed"),
@@ -31,7 +31,7 @@ def _bucket_priority(raw_priority):
     return "Low"
 
 
-def _is_ericsson_dataset(df: pd.DataFrame) -> bool:
+def _is_support_ticket_dataset(df: pd.DataFrame) -> bool:
     cols = {str(c).strip().lower() for c in df.columns}
     signature = {"priority", "case owner", "solution target", "date open"}
     return len(signature & cols) >= 3
@@ -450,15 +450,21 @@ def _ericsson_summary(df):
 
 
 def build_dashboard_summary(df_raw, recent_n=5, attention_n=5):
-    """Build a generic dataset-intelligence dashboard for the active DataFrame.
+    """Build the most useful dashboard for the active dataset.
 
-    Domain-specific ticket analytics remain available as optional legacy helpers,
-    but the Major Project I product presents a consistent generic dashboard.
+    Support-ticket datasets get the operational ticket dashboard; other
+    tabular datasets use the generic dataset-intelligence dashboard.
     """
     df = _normalize_columns(df_raw)
     df = _parse_dates(df)
-    generic = _generic_summary(df)
 
+    if _is_support_ticket_dataset(df):
+        result = _ericsson_summary(df)
+        result["datasetType"] = "support_ticket"
+        result["datasetLabel"] = "Support Ticket Operations"
+        return result
+
+    generic = _generic_summary(df)
     return {
         "datasetType": "generic",
         "datasetLabel": "Dataset Intelligence",

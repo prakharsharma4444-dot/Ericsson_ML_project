@@ -152,8 +152,8 @@ function Dashboard({
     <div className="space-y-6 relative">
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Overview</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Real-time metrics for precision analytics.</p>
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Support Ticket Overview</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Operational metrics for the active support queue.</p>
         </div>
         <button
           onClick={onExportReport}
@@ -189,15 +189,15 @@ function Dashboard({
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Open Cases" value={openCases} icon={FolderOpen} iconBg="bg-blue-50 dark:bg-blue-950/50" iconColor="text-blue-600 dark:text-blue-400" trend={openTrend} trendGood={false} />
-        <StatCard label="Overdue Cases" value={overdueCases} icon={AlertTriangle} iconBg="bg-red-50 dark:bg-red-950/50" iconColor="text-red-500 dark:text-red-400" trend={overdueTrend} trendGood={false} />
+        <StatCard label="Open Tickets" value={openCases} icon={FolderOpen} iconBg="bg-blue-50 dark:bg-blue-950/50" iconColor="text-blue-600 dark:text-blue-400" trend={openTrend} trendGood={false} />
+        <StatCard label="Overdue Tickets" value={overdueCases} icon={AlertTriangle} iconBg="bg-red-50 dark:bg-red-950/50" iconColor="text-red-500 dark:text-red-400" trend={overdueTrend} trendGood={false} />
         <StatCard label="Avg Resolution Time" value={`${avgHours}h`} icon={Clock} iconBg="bg-blue-50 dark:bg-blue-950/50" iconColor="text-blue-600 dark:text-blue-400" trend={avgTrend} trendGood={false} trendLabel="vs last week (h)" />
         <StatCard label="SLA Compliance" value={`${slaPct}%`} icon={CheckCircle2} iconBg="bg-green-50 dark:bg-green-950/50" iconColor="text-green-600 dark:text-green-400" trend={slaTrend} trendGood={true} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-5 transition-colors">
-          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-4">Case Status Breakdown</h3>
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-4">Ticket Status Breakdown</h3>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart

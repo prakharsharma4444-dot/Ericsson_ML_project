@@ -1,52 +1,72 @@
-# InsightForge — Intelligent Data Analytics & ML Platform
+# SupportIQ — Intelligent Support Ticket Analytics & Prediction Platform
 
-InsightForge is a browser-based data analytics and machine-learning platform developed as a Major Project I foundation.
+SupportIQ is a browser-based support-ticket intelligence platform built as a Major Project I foundation.
 
-It provides a connected workflow for dataset upload, exploration, data-quality analysis, analytics, classification/regression, model evaluation, interactive prediction, and multi-sheet Excel analysis.
-
-The project is designed around reusable tabular-data workflows rather than a single fixed business dataset. It also includes a generic natural-language AI Analyst that works with the active dataset.
+It combines operational ticket analytics, automated machine learning, interactive prediction, multi-sheet Excel support, and a natural-language AI Analyst in one workflow. The system is designed for support operations across domains rather than being tied to a single company.
 
 ## Core Workflow
 
 ```text
-Upload Dataset
-      ↓
-Data Exploration
-      ↓
-Data Quality + Analytics
-      ↓
-Target Selection
-      ↓
+Upload Ticket Data
+       ↓
+Explore Queue Health
+       ↓
+SLA / Priority / Status Analytics
+       ↓
+Ticket-specific ML or Generic Target Selection
+       ↓
 Preprocessing + Feature Engineering
-      ↓
-Model Training
-      ↓
-Cross-Validation + Evaluation
-      ↓
-Model Recommendation
-      ↓
-Interactive Prediction
+       ↓
+Model Training + Cross-Validation
+       ↓
+Model Comparison
+       ↓
+Prediction
+       ↓
+AI Analyst
 ```
 
-## Main Capabilities
+## Support-Ticket Capabilities
 
-### Dataset Workspace
-Supports CSV, XLSX and XLS files. Users can preview records, inspect column types, check missing values, explore distributions, compare columns, and inspect dataset quality.
+### Queue Analytics
+The support dashboard can present:
+
+- open and overdue tickets
+- SLA compliance
+- average resolution time
+- priority distribution
+- status breakdown
+- recent ticket activity
+- tickets requiring attention
+
+### Ticket Prediction
+For support-ticket datasets with the expected fields, the platform provides preset ML tasks:
+
+- Predict Ticket Priority
+- Predict Resolution Time
+- Predict Case Owner
+
+The underlying ML pipeline remains reusable, so users can also select another target column.
+
+### Ticket Text
+Support-ticket descriptions and subjects can be processed into numerical features using TF-IDF. The support-ticket adapter also derives date/SLA and resolution-duration features.
+
+### General Tabular Support
+The platform still accepts CSV, XLSX and XLS files and can fall back to a generic analytics/ML workflow for other structured datasets.
 
 ### Multi-Sheet Excel
-A workbook can contain multiple usable worksheets. The application keeps the sheets in the current session, lets the user switch the active sheet, and resets trained-model state when the feature schema changes.
-
-### Automated Machine Learning
-The ML pipeline adapts to classification or regression tasks and includes validation, cleaning, median imputation, categorical encoding, feature engineering, feature selection, outlier analysis, class-imbalance analysis, scaling, cross-validation, model comparison, model recommendation, feature importance, and prediction.
-
-### Analytics
-The dashboard provides dataset-level intelligence including row and column counts, missingness, duplicates, numeric summaries, categorical distributions, time trends, correlations, relationships, and dataset-health findings.
-
-### Prediction
-After a model is trained, the user can enter a new record through a guided prediction form. The backend keeps the training feature order and transformation state aligned with inference.
+A workbook can contain multiple usable worksheets. Users can switch the active worksheet, and trained-model state is reset when the feature schema changes.
 
 ### AI Analyst
-The AI Analyst lets users ask natural-language questions about the active dataset. Gemini interprets the question and selects controlled analytical tools; Python/Pandas performs the calculations. The feature is dataset-agnostic and is not tied to one business domain.
+The AI Analyst provides natural-language access to the active dataset. Gemini interprets the question and selects controlled analytical tools while Python/Pandas performs the calculations.
+
+Example questions:
+
+- Which priority is most common?
+- Which product has the longest average resolution time?
+- Which case owner handles the most open tickets?
+- Are there overdue or unusual tickets?
+- What are the most important things I should know about this queue?
 
 ## Technology Stack
 
@@ -65,42 +85,48 @@ The AI Analyst lets users ask natural-language questions about the active datase
 - Scikit-learn
 - Joblib
 
+### AI
+- Google Gemini
+- Google GenAI SDK
+
 ### File Processing
 - OpenPyXL
 - xlrd
 
-### Development
-- Git
-- GitHub
-
 ## Project Structure
 
 ```text
-InsightForge/
+SupportIQ/
 │
-├── main.py                 # FastAPI application and API routes
-├── pipeline.py             # Generalized ML pipeline
-├── support_ticket_prep.py  # Optional support-ticket preparation adapter
-├── dashboard_stats.py      # Analytics and dashboard calculations
-├── session_store.py        # Active dataset and model state
-├── ai_analyst.py           # Generic natural-language dataset analysis
-├── jsonsafe.py             # JSON-safe backend responses
-└── Frontend/               # React application
+├── main.py
+├── pipeline.py
+├── support_ticket_prep.py
+├── dashboard_stats.py
+├── session_store.py
+├── ai_analyst.py
+├── jsonsafe.py
+└── Frontend/
 ```
 
-## Major Project I Direction
+## Major Project I
 
-This branch is intentionally positioned as a distinct Major Project I application built on a proven data/ML foundation.
+Major Project I establishes the core support-ticket intelligence platform.
 
-The first stage focuses on:
-- reusable tabular-data analytics
-- automated ML
-- model comparison and prediction
-- multi-sheet data workflows
-- clean frontend/backend/ML separation
+The platform is intentionally not tied to Ericsson or another single organization. Its support-ticket model can be used for IT support, telecom operations, enterprise service desks, customer support, and similar workflows.
 
-Major Project II can extend this foundation with persistent storage, authentication, experiment tracking, background jobs, model registry, monitoring, deployment, additional data connectors, and advanced AI-assisted analysis.
+## Major Project II Direction
+
+The second stage can extend the system with:
+
+- persistent database-backed ticket history
+- authentication and role-based access
+- real-time ticket ingestion through APIs
+- automated retraining and model monitoring
+- model registry and experiment tracking
+- background processing
+- advanced agentic workflows
+- deployment and observability
 
 ## Academic Scope
 
-The platform is intended for experimentation, analytics, and decision support. Model recommendations should be interpreted alongside dataset quality and domain context rather than treated as automatic guarantees of business correctness.
+The system is intended for analytics, experimentation, and decision support. Model recommendations support human decisions and should be interpreted with dataset quality and domain context.

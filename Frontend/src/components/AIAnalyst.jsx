@@ -12,10 +12,10 @@ function AIAnalyst({ sessionId, datasetName, theme }) {
   const messagesEndRef = useRef(null);
 
   const suggestions = useMemo(() => [
-    'What are the most important things I should know about this dataset?',
-    'Which category appears most often?',
-    'Which group has the highest average value for a numeric measure?',
-    'Are there any unusual values, outliers, or missing data?',
+    'What are the most important things I should know about this support queue?',
+    'Which priority is most common?',
+    'Which product has the longest average resolution time?',
+    'Which case owner handles the most open tickets?',
   ], []);
 
   useEffect(() => {
@@ -280,7 +280,7 @@ function AIAnalyst({ sessionId, datasetName, theme }) {
               }}
               disabled={!sessionId || loading}
               rows={2}
-              placeholder={sessionId ? 'Ask a question about your dataset...' : 'Upload a dataset to start asking questions.'}
+              placeholder={sessionId ? 'Ask a question about your support tickets...' : 'Upload support-ticket data to start asking questions.'}
               className={`w-full resize-none rounded-xl border pl-4 pr-14 py-3 text-xs leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${
                 isDark
                   ? 'bg-slate-900 border-slate-700 text-slate-100 placeholder-slate-600'

@@ -22,8 +22,8 @@ function Sidebar({ active, onNavigate, onNewAnalysis, theme }) {
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">IF</div>
             <div>
-              <p className="text-sm font-bold tracking-tight">InsightForge</p>
-              <p className={subtitleClass}>Intelligent Data Platform</p>
+              <p className="text-sm font-bold tracking-tight">SupportIQ</p>
+              <p className={subtitleClass}>Support Ticket Intelligence</p>
             </div>
           </div>
         </div>
@@ -50,7 +50,7 @@ function Sidebar({ active, onNavigate, onNewAnalysis, theme }) {
 
       <div className={'px-3 py-3 border-t ' + (isDark ? 'border-slate-800' : 'border-slate-200')}>
         <p className={footerLabelClass}>Major Project I</p>
-        <p className={footerValueClass}>Data Analytics + ML</p>
+        <p className={footerValueClass}>Ticket Analytics + ML</p>
       </div>
     </aside>
   );
