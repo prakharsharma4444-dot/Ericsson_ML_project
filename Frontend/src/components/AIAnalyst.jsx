@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, ChevronDown, Database, Loader2, Send, Sparkles, User } from 'lucide-react';
 import { getApiBase } from '../api';
 
-function AIAnalyst({ sessionId, datasetName, theme }) {
+function AIAnalyst({ sessionId, datasetName, isSupportTicketDataset = false, theme }) {
   const isDark = theme === 'dark';
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState('');
@@ -11,12 +11,21 @@ function AIAnalyst({ sessionId, datasetName, theme }) {
   const [expandedTools, setExpandedTools] = useState({});
   const messagesEndRef = useRef(null);
 
-  const suggestions = useMemo(() => [
-    'What are the most important things I should know about this support queue?',
-    'Which priority is most common?',
-    'Which product has the longest average resolution time?',
-    'Which case owner handles the most open tickets?',
-  ], []);
+  const suggestions = useMemo(() => (
+    isSupportTicketDataset
+      ? [
+          'What are the most important things I should know about this support queue?',
+          'Which priority is most common?',
+          'Which product has the longest average resolution time?',
+          'Which case owner handles the most open tickets?',
+        ]
+      : [
+          'What are the most important patterns in this dataset?',
+          'Which numeric feature has the highest variability?',
+          'Which variables have the strongest relationships?',
+          'Are there any notable outliers or skewed distributions?',
+        ]
+  ), [isSupportTicketDataset]);
 
   useEffect(() => {
     setMessages([]);
@@ -280,7 +289,11 @@ function AIAnalyst({ sessionId, datasetName, theme }) {
               }}
               disabled={!sessionId || loading}
               rows={2}
-              placeholder={sessionId ? 'Ask a question about your support tickets...' : 'Upload support-ticket data to start asking questions.'}
+              placeholder={
+                sessionId
+                  ? (isSupportTicketDataset ? 'Ask a question about your support tickets...' : 'Ask a question about your dataset...')
+                  : 'Upload a dataset to start asking questions.'
+              }
               className={`w-full resize-none rounded-xl border pl-4 pr-14 py-3 text-xs leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${
                 isDark
                   ? 'bg-slate-900 border-slate-700 text-slate-100 placeholder-slate-600'
