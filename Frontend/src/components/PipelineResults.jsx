@@ -88,9 +88,11 @@ function PipelineResults({
     return `${(Number(value) * 100).toFixed(1)}%`;
   };
 
-  const formatErrorHours = (value) => {
+  const formatError = (value) => {
     if (value == null || Number.isNaN(Number(value))) return '—';
-    return `${Number(value).toFixed(1)} h`;
+    return Number(value).toLocaleString(undefined, {
+      maximumFractionDigits: 1,
+    });
   };
 
   return (
@@ -302,8 +304,8 @@ function PipelineResults({
                     ) : (
                       <>
                         <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{formatPercentage(r.r2 ?? r.r2_score)}</td>
-                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{formatErrorHours(r.mae)}</td>
-                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{formatErrorHours(r.rmse)}</td>
+                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{formatError(r.mae)}</td>
+                        <td className="py-3.5 font-medium text-slate-700 dark:text-slate-300">{formatError(r.rmse)}</td>
                         <td className="py-3.5 font-semibold text-purple-600 dark:text-purple-400">
                           {formatPercentage(cv?.cv_r2_mean)}
                           {cv?.cv_r2_std != null && (
