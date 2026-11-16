@@ -4,6 +4,7 @@ const NAV_ITEMS = [
   { name: 'Dashboard', icon: LayoutDashboard },
   { name: 'Upload Data', icon: Upload },
   { name: 'History', icon: History },
+  { name: 'AI Analyst', icon: Sparkles },
   { name: 'Settings', icon: Settings },
 ];
 

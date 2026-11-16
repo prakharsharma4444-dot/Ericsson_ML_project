@@ -4,7 +4,7 @@ InsightForge is a browser-based data analytics and machine-learning platform dev
 
 It provides a connected workflow for dataset upload, exploration, data-quality analysis, analytics, classification/regression, model evaluation, interactive prediction, and multi-sheet Excel analysis.
 
-The project is designed around reusable tabular-data workflows rather than a single fixed business dataset.
+The project is designed around reusable tabular-data workflows rather than a single fixed business dataset. It also includes a generic natural-language AI Analyst that works with the active dataset.
 
 ## Core Workflow
 
@@ -44,6 +44,9 @@ The dashboard provides dataset-level intelligence including row and column count
 
 ### Prediction
 After a model is trained, the user can enter a new record through a guided prediction form. The backend keeps the training feature order and transformation state aligned with inference.
+
+### AI Analyst
+The AI Analyst lets users ask natural-language questions about the active dataset. Gemini interprets the question and selects controlled analytical tools; Python/Pandas performs the calculations. The feature is dataset-agnostic and is not tied to one business domain.
 
 ## Technology Stack
 

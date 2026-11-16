@@ -21,6 +21,7 @@ import PredictionForm from './components/PredictionForm';
 import DataExploreScreen from './components/DataExploreScreen';
 import AIPredictions from './components/AIPredictions';
 import PipelineResults from './components/PipelineResults';
+import AIAnalyst from './components/AIAnalyst';
 
 function App() {
   const [uploadedFiles, setUploadedFiles] = useState([]);
@@ -771,6 +772,15 @@ setDashboardData(null);
 
           {/* HISTORY TAB */}
           {activeNav === 'History' && <HistoryScreen theme={theme} />}
+
+          {/* AI ANALYST TAB */}
+          {activeNav === 'AI Analyst' && (
+            <AIAnalyst
+              sessionId={sessionId}
+              datasetName={uploadedFiles.find((file) => file.id === activeFileId)?.name}
+              theme={theme}
+            />
+          )}
 
           {/* SETTINGS TAB */}
           {activeNav === 'Settings' && (

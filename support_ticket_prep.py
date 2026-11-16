@@ -1,6 +1,6 @@
 """
-ericsson_prep.py — Preprocessing pipeline for Ericsson support tickets.
-Includes TF-IDF keyword extraction, non-numerical value sanitization, and SLA duration logic.
+support_ticket_prep.py — Optional preprocessing adapter for support-ticket datasets.
+Includes TF-IDF text features, value sanitization, and SLA/resolution-duration features.
 """
 
 import re
