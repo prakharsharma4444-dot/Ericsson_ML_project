@@ -650,6 +650,7 @@ setDashboardData(null);
                   <AIPredictions
                     sessionId={sessionId}
                     columns={columns}
+                    isSupportTicketDataset={isSupportTicketDataset}
                     onSelectTarget={handleTargetSelect}
                     onSelectTask={(task) => handleTargetSelect(null, task)}
                     theme={theme}
