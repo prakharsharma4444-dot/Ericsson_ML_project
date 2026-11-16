@@ -18,6 +18,8 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  ScatterChart,
+  Scatter,
 } from 'recharts';
 import { compareColumns } from '../api';
 
@@ -45,7 +47,7 @@ const TICKET_PRESETS = [
   },
 ];
 
-function AIPredictions({ sessionId, columns = [], onSelectTarget, onSelectTask }) {
+function AIPredictions({ sessionId, columns = [], isSupportTicketDataset = false, onSelectTarget, onSelectTask }) {
   const colNames = columns.map((c) => (typeof c === 'object' ? c.name : c));
   const [target, setTarget] = useState('');
   const [xCol, setXCol] = useState(colNames[0] || '');
@@ -96,13 +98,15 @@ function AIPredictions({ sessionId, columns = [], onSelectTarget, onSelectTask }
     <div className="space-y-6 max-w-6xl mx-auto">
       <div>
         <p className="text-xs uppercase tracking-wider font-semibold text-indigo-600 dark:text-indigo-400">
-          Ticket Model Studio
+          {isSupportTicketDataset ? 'Support Ticket Model Studio' : 'Model Studio'}
         </p>
         <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1">
           Analyze & Predict
         </h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Train support-ticket models, compare their performance, and generate predictions from the available ticket information.
+          {isSupportTicketDataset
+            ? 'Train support-ticket models, compare their performance, and generate predictions from ticket information.'
+            : 'Choose a target, compare candidate models, and generate predictions from the active dataset.'}
         </p>
       </div>
 
@@ -206,7 +210,9 @@ function AIPredictions({ sessionId, columns = [], onSelectTarget, onSelectTask }
               Column Relationship Explorer
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Compare ticket fields before deciding what to model.
+              {isSupportTicketDataset
+                ? 'Compare ticket fields before deciding what to model.'
+                : 'Compare dataset columns before deciding what to model.'}
             </p>
           </div>
         </div>
@@ -232,18 +238,66 @@ function AIPredictions({ sessionId, columns = [], onSelectTarget, onSelectTask }
         </div>
 
         {comparisonError && <p className="mt-4 text-xs text-red-500">{comparisonError}</p>}
-        {comparison?.data && Array.isArray(comparison.data) && comparison.data.length > 0 && (
+        {comparison?.chart_type === 'scatter' && Array.isArray(comparison.data) && comparison.data.length > 0 && (
+          <div className="mt-6 h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                <XAxis
+                  type="number"
+                  dataKey={comparison.col1}
+                  name={comparison.col1}
+                  tick={{ fontSize: 10 }}
+                />
+                <YAxis
+                  type="number"
+                  dataKey={comparison.col2}
+                  name={comparison.col2}
+                  tick={{ fontSize: 10 }}
+                />
+                <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+                <Scatter
+                  name={comparison.col1 + ' vs ' + comparison.col2}
+                  data={comparison.data}
+                  fill="#4f46e5"
+                />
+              </ScatterChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {comparison?.chart_type === 'boxplot' && Array.isArray(comparison.data) && comparison.data.length > 0 && (
           <div className="mt-6 h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={comparison.data}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                <XAxis dataKey={comparison.col1} tick={{ fontSize: 10 }} interval={0} />
                 <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip />
-                <Bar dataKey="value" fill="#4f46e5" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="mean" name="Mean" fill="#4f46e5" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
+        )}
+
+        {comparison?.chart_type === 'crosstab' && comparison.data && typeof comparison.data === 'object' && !Array.isArray(comparison.data) && (
+          <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+            <p className="px-4 pt-3 text-xs font-semibold text-slate-600 dark:text-slate-300">
+              Cross-tabulation of {comparison.col1} and {comparison.col2}
+            </p>
+            <pre className="p-4 text-xs text-slate-500 dark:text-slate-400 whitespace-pre-wrap">
+              {JSON.stringify(comparison.data, null, 2)}
+            </pre>
+          </div>
+        )}
+
+        {comparison && !comparisonError &&
+          (!comparison.data ||
+            (Array.isArray(comparison.data) && comparison.data.length === 0) ||
+            (comparison.chart_type === 'crosstab' && Object.keys(comparison.data || {}).length === 0)) && (
+          <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
+            No comparable values were found for the selected columns.
+          </p>
         )}
 
         <div className="mt-5 border-t border-slate-100 dark:border-slate-800 pt-4">
