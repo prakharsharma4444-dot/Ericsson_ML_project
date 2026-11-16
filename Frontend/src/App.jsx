@@ -404,6 +404,17 @@ setDashboardData(null);
 
   const modelsList = getModelsList();
 
+  const normalizedActiveColumns = new Set(
+    (Array.isArray(columns) ? columns : [])
+      .map((column) => (typeof column === 'object' && column !== null ? column.name : column))
+      .filter(Boolean)
+      .map((column) => String(column).trim().toLowerCase())
+  );
+
+  const isSupportTicketDataset =
+    ['priority', 'case owner', 'solution target', 'date open']
+      .filter((column) => normalizedActiveColumns.has(column)).length >= 3;
+
   return (
     <div className={`flex h-screen overflow-hidden transition-colors duration-200 ${
       theme === 'dark' ? 'bg-slate-900 text-slate-100 dark' : 'bg-slate-50 text-slate-900'
@@ -417,6 +428,7 @@ setDashboardData(null);
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar
           searchQuery={searchQuery} onSearchChange={setSearchQuery}
+          isSupportTicketDataset={isSupportTicketDataset}
           startDate={filterStartDate} setStartDate={setFilterStartDate}
           endDate={filterEndDate} setEndDate={setFilterEndDate}
           selectedSeverities={filterSeverities} setSelectedSeverities={setFilterSeverities}
@@ -448,6 +460,7 @@ setDashboardData(null);
               ) : dashboardData?.datasetType === 'generic' ? (
                 <GenericDashboard
                   data={dashboardData?.generic}
+                  searchQuery={searchQuery}
                   onExplore={() => setActiveNav('Upload Data')}
                   onPredict={handleMakePrediction}
                 />
@@ -778,6 +791,7 @@ setDashboardData(null);
             <AIAnalyst
               sessionId={sessionId}
               datasetName={uploadedFiles.find((file) => file.id === activeFileId)?.name}
+              isSupportTicketDataset={isSupportTicketDataset}
               theme={theme}
             />
           )}
