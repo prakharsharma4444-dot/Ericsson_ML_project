@@ -450,18 +450,18 @@ def _ericsson_summary(df):
 
 
 def build_dashboard_summary(df_raw, recent_n=5, attention_n=5):
+    """Build a generic dataset-intelligence dashboard for the active DataFrame.
+
+    Domain-specific ticket analytics remain available as optional legacy helpers,
+    but the Major Project I product presents a consistent generic dashboard.
+    """
     df = _normalize_columns(df_raw)
     df = _parse_dates(df)
-    if _is_ericsson_dataset(df):
-        result = _ericsson_summary(df)
-        result["datasetType"] = "ericsson"
-        result["datasetLabel"] = "Ericsson Support Analytics"
-        return result
-
     generic = _generic_summary(df)
+
     return {
         "datasetType": "generic",
-        "datasetLabel": "Dataset Analytics",
+        "datasetLabel": "Dataset Intelligence",
         "summary": None,
         "priorityData": [],
         "statusData": [],
