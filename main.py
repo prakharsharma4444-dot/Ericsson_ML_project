@@ -1010,14 +1010,11 @@ def predict(session_id: str, req: PredictRequest):
             get_negativity_score(case_description)
         )
 
-    sample_df = pd.DataFrame([full_sample])
-
-    cat_cols = [c for c in (session.categorical_columns or []) if c in sample_df.columns]
-    if cat_cols:
-        sample_df = pd.get_dummies(sample_df, columns=cat_cols)
-
-    sample_df = sample_df.reindex(columns=session.feature_columns, fill_value=0)
-    sample_dict = sample_df.iloc[0].to_dict()
+    # Keep raw feature values available until predict_single().
+    # The training pipeline may retain engineered *_sqrt / *_log features.
+    # predict_single() recreates those transforms from their raw parent
+    # columns before aligning the sample to the exact training feature set.
+    sample_dict = full_sample
 
     try:
         result = predict_single(
