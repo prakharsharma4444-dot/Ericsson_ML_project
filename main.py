@@ -992,13 +992,16 @@ def feature_importance(session_id: str, model_name: str):
     if model is None:
         raise HTTPException(404, f"No trained model named '{model_name}'.")
 
-    importances = get_feature_importance(model, session.feature_columns)
-    if importances is None:
-        return {"supported": False, "importances": []}
-
+    importances = get_adaptive_feature_importance(model)
     return {
-        "supported": True,
-        "importances": [{"feature": f, "importance": to_jsonable(v)} for f, v in importances],
+        "supported": bool(importances),
+        "importances": [
+            {
+                "feature": feature,
+                "importance": to_jsonable(score),
+            }
+            for feature, score in importances
+        ],
     }
 
 
@@ -1017,11 +1020,10 @@ def predict(session_id: str, req: PredictRequest):
     session = get_session_or_404(session_id)
 
     model = session.trained_models.get(req.model_name)
-
     if model is None:
         raise HTTPException(
             404,
-            f"No trained model named '{req.model_name}'."
+            f"No trained model named '{req.model_name}'.",
         )
 
     full_sample = dict(
@@ -1042,61 +1044,84 @@ def predict(session_id: str, req: PredictRequest):
 
     full_sample.update(user_sample)
 
+    # Support-ticket virtual product field -> one-hot product inputs.
     if selected_product:
-        product_prefix = "prod_"
-
-        for col in session.original_feature_defaults.keys():
-            if str(col).lower().startswith(product_prefix):
+        for col in list(full_sample.keys()):
+            if str(col).lower().startswith("prod_"):
                 full_sample[col] = (
                     1.0
                     if str(col).lower()
-                    == f"{product_prefix}{str(selected_product).lower()}"
+                    == f"prod_{str(selected_product).lower()}"
                     else 0.0
                 )
 
-    if case_description and getattr(
-        session,
-        "tfidf_vectorizer",
-        None
-    ) is not None:
-
+    # Support-ticket virtual description field -> the same TF-IDF features
+    # created during training.
+    if case_description and getattr(session, "tfidf_vectorizer", None) is not None:
         vectorizer = session.tfidf_vectorizer
-
         vec = vectorizer.transform(
             [str(case_description).lower()]
         )
-
         tfidf_names = [
-            f"tfidf_{w}"
-            for w in vectorizer.get_feature_names_out()
+            f"tfidf_{word}"
+            for word in vectorizer.get_feature_names_out()
         ]
 
-        for name, val in zip(
-            tfidf_names,
-            vec.toarray()[0]
-        ):
-            full_sample[name] = float(val)
+        for name, value in zip(tfidf_names, vec.toarray()[0]):
+            full_sample[name] = float(value)
 
         full_sample["text_negativity_score"] = (
             get_negativity_score(case_description)
         )
 
-    # Keep raw feature values available until predict_single().
-    # The training pipeline may retain engineered *_sqrt / *_log features.
-    # predict_single() recreates those transforms from their raw parent
-    # columns before aligning the sample to the exact training feature set.
-    sample_dict = full_sample
-
     try:
-        result = predict_single(
-            model,
-            session.scaler,
-            sample_dict,
-            session.feature_columns,
-            was_log_transformed=session.was_log_transformed,
-        )
+        if getattr(session, "adaptive_metadata", None):
+            sample_raw = pd.DataFrame([full_sample])
+            sample_features = engineer_adaptive_features(
+                sample_raw,
+                session.adaptive_metadata,
+            )
+
+            result = predict_adaptive_single(
+                model,
+                sample_features,
+                session.problem_type,
+                was_log_transformed=session.was_log_transformed,
+            )
+        else:
+            # Backward-compatible fallback for sessions trained before the
+            # adaptive engine was introduced.
+            sample_df = pd.DataFrame([full_sample])
+
+            cat_cols = [
+                c
+                for c in (session.categorical_columns or [])
+                if c in sample_df.columns
+            ]
+            if cat_cols:
+                sample_df = pd.get_dummies(
+                    sample_df,
+                    columns=cat_cols,
+                )
+
+            sample_df = sample_df.reindex(
+                columns=session.feature_columns,
+                fill_value=0,
+            )
+            sample_dict = sample_df.iloc[0].to_dict()
+
+            result = predict_single(
+                model,
+                session.scaler,
+                sample_dict,
+                session.feature_columns,
+                was_log_transformed=session.was_log_transformed,
+            )
+
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(400, f"Prediction failed: {e}")
 
     if session.label_classes and session.problem_type == "classification":
         idx = int(round(result["prediction"]))
