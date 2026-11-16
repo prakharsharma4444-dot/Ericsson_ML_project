@@ -80,9 +80,10 @@ InsightForge/
 │
 ├── main.py                 # FastAPI application and API routes
 ├── pipeline.py             # Generalized ML pipeline
-├── ericsson_prep.py        # Support-ticket-specific preparation module
+├── support_ticket_prep.py  # Optional support-ticket preparation adapter
 ├── dashboard_stats.py      # Analytics and dashboard calculations
 ├── session_store.py        # Active dataset and model state
+├── ai_analyst.py           # Generic natural-language dataset analysis
 ├── jsonsafe.py             # JSON-safe backend responses
 └── Frontend/               # React application
 ```

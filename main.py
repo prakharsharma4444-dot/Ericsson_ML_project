@@ -41,7 +41,7 @@ from pipeline import (
     predict_single,
 )
 
-app = FastAPI(title="ML Pipeline API")
+app = FastAPI(title="InsightForge API")
 
 # Dev-friendly CORS: the Vite dev server runs on 5173 by default.
 app.add_middleware(

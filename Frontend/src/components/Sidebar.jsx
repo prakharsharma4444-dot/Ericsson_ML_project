@@ -1,4 +1,4 @@
-import { LayoutDashboard, Upload, History, Settings, PlusCircle } from 'lucide-react';
+import { LayoutDashboard, Upload, History, Settings, PlusCircle, Sparkles } from 'lucide-react';
 
 const NAV_ITEMS = [
   { name: 'Dashboard', icon: LayoutDashboard },
