@@ -1,10 +1,9 @@
-import { LayoutDashboard, Upload, History, Settings, PlusCircle, FlaskConical } from 'lucide-react';
+import { LayoutDashboard, Upload, History, Settings, PlusCircle } from 'lucide-react';
 
 const NAV_ITEMS = [
   { name: 'Dashboard', icon: LayoutDashboard },
   { name: 'Upload Data', icon: Upload },
   { name: 'History', icon: History },
-  { name: 'Experiments', icon: FlaskConical },
   { name: 'Settings', icon: Settings },
 ];
 
