@@ -128,9 +128,9 @@ function GenericDashboard({ data = {}, onExplore, onPredict }) {
     <div className="space-y-6 pb-8">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <p className="text-xs uppercase tracking-wider font-semibold text-blue-600 dark:text-blue-400 mb-1">Dataset Analytics</p>
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Dataset Intelligence Dashboard</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">A full automatic profile of structure, quality, distributions, relationships, and time coverage.</p>
+          <p className="text-xs uppercase tracking-wider font-semibold text-indigo-600 dark:text-indigo-400 mb-1">InsightForge</p>
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Dataset Insight Workspace</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">A structured view of quality, distributions, relationships, and useful signals in the active dataset.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={onExplore} className="px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700">

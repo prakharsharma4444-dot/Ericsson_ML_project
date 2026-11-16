@@ -71,10 +71,10 @@ function UploadCard({ onFileSelect, theme = 'dark' }) {
                   isDark ? 'text-white' : 'text-slate-800'
                 }`}
               >
-                Upload Data
+                Bring in a Dataset
               </h2>
               <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                Add one or more datasets to explore, analyze, and build models.
+                Upload structured data to explore quality, discover patterns, and build predictive models.
               </p>
             </div>
           </div>
@@ -262,7 +262,7 @@ function UploadCard({ onFileSelect, theme = 'dark' }) {
               }`}
             >
               <UploadCloud size={14} />
-              Use Dataset{selectedFiles.length > 1 ? 's' : ''}
+              Analyze Dataset{selectedFiles.length > 1 ? 's' : ''}
             </button>
           </div>
         </div>
