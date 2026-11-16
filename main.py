@@ -736,164 +736,198 @@ def train(session_id: str, req: TrainRequest):
         raise HTTPException(400, {"errors": errors, "warnings": warnings})
 
     problem_type = detect_problem_type(df[target_col])
-    df, target_col_final, was_log = maybe_log_transform(df, target_col, problem_type)
+    df, target_col_final, was_log = maybe_log_transform(
+        df,
+        target_col,
+        problem_type,
+    )
 
     if was_log and not np.isfinite(df[target_col_final]).all():
         raise HTTPException(
             400,
             f"'{target_col}' has values <= -1, so a log transform produces invalid "
-            "numbers for some rows. This column looks too skewed to log-transform "
-            "safely — you may need to clean it (remove negative/zero values) first.",
+            "numbers for some rows. This target cannot be safely log-transformed.",
         )
+
     if was_log and target_col in df.columns and target_col != target_col_final:
-         df = df.drop(columns=[target_col])
+        df = df.drop(columns=[target_col])
 
-    df, clean_report = clean_data(df, target_col_final)
+    # Structural cleaning only. Imputation is deliberately handled inside
+    # the adaptive sklearn preprocessing pipeline after the train/test split.
+    df, clean_report = clean_adaptive_data(df, target_col_final)
 
-    original_feature_cols = [c for c in df.columns if c not in (target_col, target_col_final)]
-    plain_feature_cols, text_derived_cols = split_text_derived_columns(original_feature_cols)
-    has_text_derived = bool(text_derived_cols) and tfidf_vectorizer is not None
-
-    original_feature_info = build_predict_form_fields(df, plain_feature_cols, has_text_derived)
-    original_feature_defaults = build_feature_defaults(df, plain_feature_cols, text_derived_cols)
-
-    categorical_columns = [
-        c for c in original_feature_cols if df[c].dtype == "object"
+    original_feature_cols = [
+        c for c in df.columns
+        if c not in (target_col, target_col_final)
     ]
 
-    df = encode_categoricals(df, target_col_final)
+    plain_feature_cols, text_derived_cols = split_text_derived_columns(
+        original_feature_cols
+    )
+    has_text_derived = bool(text_derived_cols) and tfidf_vectorizer is not None
 
-    # Deterministic feature transforms do not use the target and can be
-    # generated before the split. Target-dependent feature selection happens
-    # only on the training set below to prevent test-set leakage.
-    df, added_transform_cols = add_standard_transforms(df, target_col_final)
+    original_feature_info = build_predict_form_fields(
+        df,
+        plain_feature_cols,
+        has_text_derived,
+    )
+    original_feature_defaults = build_feature_defaults(
+        df,
+        plain_feature_cols,
+        text_derived_cols,
+    )
+
+    categorical_columns = [
+        c
+        for c in original_feature_cols
+        if df[c].dtype == "object"
+    ]
 
     imbalance_counts = None
     label_classes = None
+
     if problem_type == "classification":
-        counts = check_imbalance(df, target_col_final)
-        imbalance_counts = counts.to_dict()
+        raw_classes = df[target_col_final].dropna().unique().tolist()
         if not pd.api.types.is_numeric_dtype(df[target_col_final]):
-            label_classes = sorted(df[target_col_final].dropna().unique().tolist())
+            label_classes = sorted([str(v) for v in raw_classes])
+
         df = encode_target(df, target_col_final)
 
-    drop_cols = [c for c in (target_col, target_col_final) if c in df.columns]
-    X = df.drop(columns=drop_cols)
+        # Keep a small class-balance report for the UI / diagnostics.
+        imbalance_counts = df[target_col_final].value_counts().to_dict()
+
+    drop_cols = [
+        c
+        for c in (target_col, target_col_final)
+        if c in df.columns
+    ]
+
+    X_raw = df.drop(columns=drop_cols)
     y = df[target_col_final]
 
-    if len(X.columns) == 0:
-        raise HTTPException(400, "No feature columns left after cleaning. Try a different target.")
-
-    test_size = req.test_size if req.test_size is not None else 0.2
-
-    if not 0.1 <= test_size <= 0.5:
+    if X_raw.shape[1] == 0:
         raise HTTPException(
             400,
-            "test_size must be between 0.1 and 0.5."
+            "No feature columns left after cleaning. Try a different target.",
         )
 
-    # Split before any target-dependent feature selection so the held-out
-    # test set does not influence which features are retained.
-    X_train, X_test, y_train, y_test = split_data(
-        X, y, test_size=test_size
+    test_size = req.test_size if req.test_size is not None else 0.2
+    if not 0.1 <= test_size <= 0.5:
+        raise HTTPException(400, "test_size must be between 0.1 and 0.5.")
+
+    # Split raw feature data first. Any learned preprocessing now happens
+    # strictly inside the training/CV pipeline.
+    split_problem = (
+        "classification"
+        if problem_type == "classification"
+        else "regression"
+    )
+    if split_problem == "classification":
+        X_train_raw, X_test_raw, y_train, y_test = train_test_split(
+            X_raw,
+            y,
+            test_size=test_size,
+            random_state=42,
+            stratify=y,
+        )
+    else:
+        X_train_raw, X_test_raw, y_train, y_test = train_test_split(
+            X_raw,
+            y,
+            test_size=test_size,
+            random_state=42,
+        )
+
+    # Learn the schema only from training features.
+    adaptive_metadata = infer_feature_types(X_train_raw)
+
+    X_train = engineer_adaptive_features(
+        X_train_raw,
+        adaptive_metadata,
+    )
+    X_test = engineer_adaptive_features(
+        X_test_raw,
+        adaptive_metadata,
     )
 
-    # Mutual-information feature selection is target-dependent, so fit it
-    # using training data only.
-    train_selection_df = X_train.copy()
-    train_selection_df[target_col_final] = y_train
-
-    train_selection_df, dropped_low_signal_cols = select_informative_features(
-        train_selection_df,
-        target_col_final
-    )
-
-    X_train = train_selection_df.drop(columns=[target_col_final])
-    y_train = train_selection_df[target_col_final]
-
-    # Apply the exact feature set selected from training to the test set.
+    # Ensure deterministic feature schema across train/test.
     X_test = X_test.reindex(
         columns=X_train.columns,
-        fill_value=0
+        fill_value=np.nan,
     )
 
-    # Outlier analysis is used to choose the scaler, so it must also be
-    # computed from training data only.
+    if X_train.shape[1] == 0:
+        raise HTTPException(
+            400,
+            "No usable feature columns remain after adaptive feature engineering.",
+        )
+
+    models = build_adaptive_pipelines(
+        X_train,
+        problem_type,
+    )
+
+    cv_results_df = cross_validate_adaptive(
+        models,
+        X_train,
+        y_train,
+        problem_type,
+    )
+
+    results_df, trained_models = train_adaptive_models(
+        models,
+        X_train,
+        y_train,
+        X_test,
+        y_test,
+        problem_type,
+        was_log_transformed=was_log,
+    )
+
+    try:
+        recommended_name = recommend_adaptive_model(
+            results_df,
+            trained_models,
+            cv_results_df,
+            problem_type,
+            priority=req.priority,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    recommended_model = trained_models[recommended_name]
+
+    # Reporting-only outlier summary. It does not influence imputation.
     outlier_df = X_train.copy()
     outlier_df[target_col_final] = y_train
     outlier_summary = check_outliers(
         outlier_df,
-        target_col_final
+        target_col_final,
     )
 
-    scaler = choose_scaler(
-        outlier_summary,
-        total_features=X_train.shape[1]
-    )
-
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-
-    models = get_default_models(problem_type)
-
-    # Cross-validation is performed on the training set only. Each CV fold
-    # fits its own scaler inside the pipeline, preventing preprocessing
-    # leakage between CV folds.
-    cv_pipelines = build_cv_pipelines(models, scaler)
-    cv_results_df = cross_validate_models(
-        cv_pipelines,
-        X_train,
-        y_train,
-        problem_type,
-        was_log
-    )
-
-    results_df, trained_models = train_and_evaluate(
-        models,
-        X_train_scaled,
-        y_train,
-        X_test_scaled,
-        y_test,
-        problem_type,
-        was_log
-    )
-    if req.priority is None:
-        cv_metric = "cv_f1_macro_mean" if problem_type == "classification" else "cv_r2_mean"
-        best_cv_row = cv_results_df.sort_values(
-            cv_metric,
-            ascending=False
-        ).iloc[0]
-
-        recommended_name = best_cv_row["model"]
-        best_model = trained_models[recommended_name]
-
-        print(
-            f"Recommended model based on cross-validation "
-            f"'{cv_metric}': {recommended_name}"
-        )
-    else:
-        try:
-            best_model = recommend_model(
-                results_df,
-                trained_models,
-                problem_type,
-                priority=req.priority
-            )
-        except ValueError as e:
-            raise HTTPException(400, str(e))
-
-        recommended_name = next(
-            name for name, m in trained_models.items()
-            if m is best_model
-        )
-
-    session_feature_columns = X_train.columns.tolist()
+    session_feature_columns = adaptive_feature_names(recommended_model)
     top_features = rank_top_features(
-        best_model,
+        recommended_model,
         session_feature_columns,
         plain_feature_cols,
-        text_derived_cols
+        text_derived_cols,
     )
+
+    adaptive_summary = {
+        "numeric_columns": len(adaptive_metadata.get("numeric", [])),
+        "categorical_columns": len(adaptive_metadata.get("categorical", [])),
+        "datetime_columns": len(adaptive_metadata.get("datetime", [])),
+        "text_columns": len(adaptive_metadata.get("text", [])),
+        "transformed_numeric_columns": len(
+            adaptive_metadata.get("transform_candidates", [])
+        ),
+        "engineered_feature_columns": int(X_train.shape[1]),
+        "model_feature_columns": int(len(session_feature_columns)),
+        "categorical_encoding": "One-hot encoding with unseen-category handling",
+        "numeric_imputation": "Median + missing-value indicators",
+        "date_engineering": "Year, month, day, weekday, quarter, weekend/hour when available",
+        "text_engineering": "Character count, word count, and missing-text indicators",
+    }
 
     session.target_col = target_col
     session.problem_type = problem_type
@@ -905,10 +939,14 @@ def train(session_id: str, req: TrainRequest):
     session.original_feature_info = original_feature_info
     session.original_feature_defaults = original_feature_defaults
     session.text_derived_cols = text_derived_cols
-    session.tfidf_vectorizer = tfidf_vectorizer if has_text_derived else None
+    session.tfidf_vectorizer = (
+        tfidf_vectorizer if has_text_derived else None
+    )
     session.categorical_columns = categorical_columns
+    session.adaptive_metadata = adaptive_metadata
+    session.adaptive_summary = adaptive_summary
     session.feature_columns = session_feature_columns
-    session.scaler = scaler
+    session.scaler = None
     session.trained_models = trained_models
     session.results = results_df.to_dict("records")
     session.cv_results = cv_results_df.to_dict("records")
@@ -918,6 +956,7 @@ def train(session_id: str, req: TrainRequest):
 
     return to_jsonable({
         "problem_type": problem_type,
+        "target_col": target_col,
         "was_log_transformed": was_log,
         "clean_report": clean_report,
         "outlier_summary": outlier_summary,
@@ -929,6 +968,7 @@ def train(session_id: str, req: TrainRequest):
         "feature_columns": session.feature_columns,
         "original_feature_info": original_feature_info,
         "top_features": top_features,
+        "adaptive_summary": adaptive_summary,
         "test_size": test_size,
     })
 
