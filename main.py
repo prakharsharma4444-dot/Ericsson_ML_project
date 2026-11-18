@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
 from pydantic import BaseModel
+from sklearn.model_selection import train_test_split
 
 from jsonsafe import to_jsonable
 from session_store import Session, create_session, get_session
