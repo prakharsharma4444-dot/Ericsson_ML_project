@@ -671,16 +671,30 @@ def predict_adaptive_single(
     was_log_transformed=False,
 ):
     sample_df = sample_features.copy()
-    prediction = model.predict(sample_df)[0]
+
+    # Adaptive models are sklearn Pipelines. Transform the raw engineered
+    # prediction row with the exact fitted preprocessing schema before calling
+    # the final estimator. This keeps prediction aligned with training and
+    # avoids sklearn feature-name/shape mismatches.
+    estimator = model
+    transformed = sample_df
+
+    if hasattr(model, "named_steps"):
+        preprocessor = model.named_steps.get("preprocessor")
+        estimator = model.named_steps.get("model", model)
+
+        if preprocessor is not None:
+            transformed = preprocessor.transform(sample_df)
+
+    prediction = estimator.predict(transformed)[0]
 
     if was_log_transformed:
         prediction = np.expm1(prediction)
 
     result = {"prediction": float(prediction)}
 
-    estimator = model.named_steps.get("model", model)
     if problem_type == "classification" and hasattr(estimator, "predict_proba"):
-        probabilities = estimator.predict_proba(sample_df)[0]
+        probabilities = estimator.predict_proba(transformed)[0]
         result["confidence"] = float(np.max(probabilities))
         result["class_probabilities"] = [float(p) for p in probabilities]
 
